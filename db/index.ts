@@ -1,0 +1,60 @@
+import { drizzle } from "drizzle-orm/d1";
+import * as schema from "./schema";
+
+async function getRuntimeEnv() {
+  const runtime = await import("cloudflare:workers");
+  return runtime.env;
+}
+
+export async function getDb() {
+  const env = await getRuntimeEnv();
+  if (!env.DB) {
+    throw new Error(
+      "Cloudflare D1 binding `DB` is unavailable. Set the `d1` field in .openai/hosting.json to `DB` or let your control plane inject the real binding values before using the database."
+    );
+  }
+
+  return drizzle(env.DB, { schema });
+}
+
+export async function ensureSchema() {
+  const env = await getRuntimeEnv();
+  if (!env.DB) throw new Error("Cloudflare D1 binding `DB` is unavailable.");
+  await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS profiles (
+      email text PRIMARY KEY NOT NULL,
+      display_name text NOT NULL,
+      premium integer DEFAULT 0 NOT NULL,
+      selected_subjects text DEFAULT '[]' NOT NULL,
+      created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL,
+      updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS test_attempts (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      user_email text NOT NULL,
+      subject_id text NOT NULL,
+      subject_name text NOT NULL,
+      level text NOT NULL,
+      paper_id text NOT NULL,
+      paper_name text NOT NULL,
+      mode text NOT NULL,
+      percent integer NOT NULL,
+      grade integer NOT NULL,
+      duration_seconds integer DEFAULT 0 NOT NULL,
+      topic_breakdown text DEFAULT '[]' NOT NULL,
+      criteria_breakdown text DEFAULT '[]' NOT NULL,
+      question_ids text DEFAULT '[]' NOT NULL,
+      difficulty_trail text DEFAULT '[]' NOT NULL,
+      mistakes text DEFAULT '[]' NOT NULL,
+      created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )`),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS attempts_user_date_idx ON test_attempts (user_email, created_at)"),
+  ]);
+  for (const statement of [
+    "ALTER TABLE test_attempts ADD COLUMN criteria_breakdown text DEFAULT '[]' NOT NULL",
+    "ALTER TABLE test_attempts ADD COLUMN question_ids text DEFAULT '[]' NOT NULL",
+    "ALTER TABLE test_attempts ADD COLUMN difficulty_trail text DEFAULT '[]' NOT NULL",
+  ]) {
+    try { await env.DB.prepare(statement).run(); } catch { /* column already exists */ }
+  }
+}
