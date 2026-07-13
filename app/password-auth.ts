@@ -19,6 +19,24 @@ export function validatePassword(value: string) {
   return null;
 }
 
+const RECOVERY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+export function normalizeRecoveryCode(value: string) {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+export function validateRecoveryCode(value: string) {
+  return /^[A-HJ-NP-Z2-9]{20}$/.test(normalizeRecoveryCode(value))
+    ? null
+    : "Enter the 20-character recovery code issued by this site.";
+}
+
+export function createRecoveryCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(20));
+  const raw = Array.from(bytes, (byte) => RECOVERY_ALPHABET[byte % RECOVERY_ALPHABET.length]).join("");
+  return raw.match(/.{1,5}/g)!.join("-");
+}
+
 const bytesToHex = (bytes: Uint8Array) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 const hexToBytes = (value: string) => {
   if (!/^[0-9a-f]*$/i.test(value) || value.length % 2) return new Uint8Array();
