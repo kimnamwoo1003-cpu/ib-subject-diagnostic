@@ -288,12 +288,11 @@ function languageQuestion(subject: Subject, level: Level, paper: Paper, topic: D
     const isLiterature = kind === "A Literature";
     const texts = isLiterature ? profile.literary : profile.nonLiterary;
     const text = texts[variant % 2];
-    const secondText = texts[(variant + 1) % 2];
-    const prompt = aPaper1Prompt(profile.name, level === "HL");
+    const prompt = aPaper1Prompt(profile.name, false);
     return {
-      ...common, id: `${subject.id}-${level}-p1-${topic.code}-v${variant}`, context: level === "HL" ? `Original unseen texts · ${profile.name}\n\nTEXT 1\n${text}\n\nTEXT 2\n${secondText}` : `Original unseen ${isLiterature ? "literary extract" : "non-literary text"} · ${profile.name}\n\n${text}`,
+      ...common, id: `${subject.id}-${level}-p1-${topic.code}-v${variant}`, context: `One-hour focused Paper 1 section · original unseen ${isLiterature ? "literary extract" : "non-literary text"} · ${profile.name}\n\n${text}`,
       prompt, responseType: "extended", modelAnswer: `A strong analysis establishes a central interpretation, selects precise evidence, connects each choice to a local effect and wider purpose, and considers a defensible alternative reading.`,
-      keywords: [...profile.analysis, ...topic.concepts], marks: level === "HL" ? 40 : 20, skill: "Guided analysis", commandTerm: "Analyse", estimatedMinutes: level === "HL" ? 135 : 75, section: `${kind} Paper 1`, criterionCodes: ["A", "B", "C", "D"],
+      keywords: [...profile.analysis, ...topic.concepts], marks: 20, skill: "Guided analysis", commandTerm: "Analyse", estimatedMinutes: 60, section: `${kind} Paper 1 · focused section`, criterionCodes: ["A", "B", "C", "D"],
       markschemePoints: ["A: sustained interpretation supported by precise references", "B: evidence → choice/form → local effect → wider meaning/purpose", "C: focused, coherent line of inquiry", "D: clear, varied and accurate academic expression"],
       commonErrors: ["unsupported_interpretation", "feature_spotting_without_effect", "quotation_dump", "generic_audience_effect"],
     };
@@ -314,7 +313,7 @@ function languageQuestion(subject: Subject, level: Level, paper: Paper, topic: D
       ...common, id: `${subject.id}-${level}-p2-${topic.code}-v${variant}`, context: task.context,
       prompt: task.prompt, responseType: "extended",
       modelAnswer: `A top response builds one comparative conceptual thesis, integrates both works in every main section, analyses form as well as content, balances similarity and difference, and qualifies the final judgement.`,
-      keywords: [...profile.analysis, "comparison", "thesis", ...topic.concepts], marks: 30, skill: "Comparative literary essay", commandTerm: "Compare and contrast", estimatedMinutes: 105, section: `${kind} Paper 2`, criterionCodes: ["A", "B", "C", "D"],
+      keywords: [...profile.analysis, "comparison", "thesis", ...topic.concepts], marks: 30, skill: "Comparative literary essay", commandTerm: "Compare and contrast", estimatedMinutes: 60, section: `${kind} Paper 2 · focused essay`, criterionCodes: ["A", "B", "C", "D"],
       markschemePoints: ["knowledge and interpretation of both works", "comparative analysis of authorial choices", "sustained comparative focus and balanced organization", "clear and accurate academic language"],
       commonErrors: ["weak_comparison", "separate_text_blocks", "imbalanced_works", "thesis_not_sustained"],
     };
@@ -326,19 +325,34 @@ function languageQuestion(subject: Subject, level: Level, paper: Paper, topic: D
       ...common, id: `${subject.id}-${level}-p1-${topic.code}-v${variant}`, context: `Original productive-writing scenario · ${profile.name}\n\n${scenarios[variant % scenarios.length]}\n\n${bWritingInstruction(profile.name, profile.writing)}`,
       prompt: bWritingPrompt(profile.name, level), responseType: "extended",
       modelAnswer: `The response selects a defensible text type, uses its conventions naturally, addresses every prompt part, develops relevant ideas with detail, and sustains an audience-appropriate register in ${profile.name}.`,
-      keywords: [...profile.analysis, ...topic.concepts], marks: 30, skill: "Purposeful productive writing", commandTerm: "Produce", estimatedMinutes: level === "HL" ? 90 : 75, section: "Language B Paper 1", criterionCodes: ["A", "B", "C"],
+      keywords: [...profile.analysis, ...topic.concepts], marks: 30, skill: "Purposeful productive writing", commandTerm: "Produce", estimatedMinutes: 60, section: "Language B Paper 1 · focused response", criterionCodes: ["A", "B", "C"],
       markschemePoints: ["A: range, accuracy, vocabulary and register", "B: relevant ideas developed clearly; every task part addressed", "C: audience, purpose, context and text-type conventions"],
       commonErrors: ["wrong_text_type", "audience_mismatch", "register_inconsistent", "prompt_part_omitted", "ideas_underdeveloped"],
     };
   }
 
-  const passage = profile.bReading[variant % profile.bReading.length];
-  const correct = variant % 2 === 0 ? `It changed who was recognized as knowledgeable in the community.` : `Belonging to a place also depends on shared memory.`;
-  const distractors = variant % 2 === 0 ? ["It replaced all formal lessons.", "It mainly raised money for new equipment.", "It made technical experts unnecessary."] : ["Language learning is only effective indoors.", "The visible architecture of a city never changes.", "New residents should avoid local history."];
+  const passageIndex = variant % profile.bReading.length;
+  const passage = profile.bReading[passageIndex];
+  const taskIndex = Math.floor(variant / profile.bReading.length) % 5;
+  const repairTasks = [
+    ["Which statement best expresses the main idea of the text?", "The repair project produced social participation as well as environmental benefits.", ["The school replaced its lessons with technical training.", "Only professional technicians were allowed to help.", "The project succeeded mainly by selling repaired devices."]],
+    ["What can be inferred about knowledge in the community?", "It changed who was recognized as knowledgeable in the community.", ["Only adults possessed useful knowledge.", "Technical knowledge became unnecessary.", "Quiet students refused to help other people."]],
+    ["What is the writer's main purpose?", "To show that a practical sustainability project had an unexpected social effect.", ["To warn schools against inviting community members.", "To advertise a commercial repair service.", "To prove that classroom learning has no value."]],
+    ["Which development caused the project to expand beyond chargers?", "Local people began teaching sewing and bicycle repair.", ["Students received new phones from the school.", "The repair corner began charging an entry fee.", "Formal lessons were moved into the repair corner."]],
+    ["Which description best captures the writer's attitude?", "Positive, while distinguishing measurable waste reduction from a less measurable social change.", ["Dismissive of every environmental benefit.", "Uncertain whether the project took place.", "Critical because students spoke less in class."]],
+  ] as const;
+  const walkingTasks = [
+    ["Which statement best expresses the main idea of the text?", "Learning to belong to a place can involve its shared memories as well as its visible present.", ["A city can be understood only through formal language lessons.", "Walking groups should discuss only existing buildings.", "New residents cannot participate in local memory."]],
+    ["What can be inferred about belonging in the text?", "Belonging to a place also depends on shared memory.", ["Language learning is only effective indoors.", "The visible architecture of a city never changes.", "New residents should avoid local history."]],
+    ["What is the writer's main purpose?", "To illustrate how an expected language activity became a deeper lesson about place and memory.", ["To compare the prices of different language courses.", "To argue that walking is an ineffective way to learn.", "To document the design of new buildings."]],
+    ["What did the group discuss instead of giving the expected vocabulary lessons?", "Stories about buildings that no longer existed.", ["Instructions for leaving the city.", "Plans for replacing the weekend group.", "Lists of words with no local context."]],
+    ["Which description best captures the tone of the final realization?", "Reflective and quietly transformative.", ["Angry and accusatory.", "Technical and impersonal.", "Comic and dismissive."]],
+  ] as const;
+  const [readingPrompt, correct, distractors] = (passageIndex === 0 ? repairTasks : walkingTasks)[taskIndex];
   const options = rotate([correct, ...distractors], variant % 4);
   return {
     ...common, id: `${subject.id}-${level}-p2r-${topic.code}-v${variant}`, context: `Original authentic-style reading text · ${profile.name}\n\n${passage}`,
-    prompt: `Which statement best expresses an implied idea in the text? Answer from the text, not from outside knowledge.`, responseType: "mcq", choices: options, correctIndex: options.indexOf(correct),
+    prompt: `${readingPrompt} Answer from the text, not from outside knowledge.`, responseType: "mcq", choices: options, correctIndex: options.indexOf(correct),
     modelAnswer: correct, keywords: topic.concepts, marks: 1, skill: "Inference from written text", commandTerm: "Identify", estimatedMinutes: 3, section: "Language B Paper 2 Reading", criterionCodes: ["R"],
     markschemePoints: ["selects the single inference supported by the passage"], commonErrors: ["copies an unrelated detail", "uses outside knowledge", "chooses an overgeneralization"],
   };
