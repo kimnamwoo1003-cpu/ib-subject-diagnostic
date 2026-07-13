@@ -508,12 +508,13 @@ function physics(subject: Subject, paper: Paper, node: ScienceNode, v: number, d
   const gradient = 2.4 + v * 0.12;
   const intercept = 0.08 + (v % 3) * 0.03;
   const y = x.map((value, i) => Number((gradient * value + intercept + [0.01, -0.02, 0.02, -0.01, 0.01][i]).toFixed(2)));
-  const context = `A student tests a model connected to ${node.title}.\n${xLabel}: ${x.map((n) => n.toFixed(2)).join(" | ")}\n${yLabel}: ${y.map((n) => n.toFixed(2)).join(" | ")}\nAbsolute uncertainty in each dependent value: ±0.04 in the stated unit. The linearized model predicts y = kx and assumes ${assumption}. For this representation, ${meaning}.`;
-  if (paper.id === "p1a") return mcq(subject, paper, node, v, d,
+  const context = `A student tests a model connected to ${node.title}. The plotted points show the measured data and the error bars show an absolute uncertainty of ±0.04 in each dependent value. The linearized model predicts y = kx and assumes ${assumption}. For this representation, ${meaning}.`;
+  const graph = (question: Question): Question => ({ ...question, visual: "data-graph", visualData: { xLabel, yLabel, x, y, uncertainty: 0.04 } });
+  if (paper.id === "p1a") return graph(mcq(subject, paper, node, v, d,
     `Which statement best describes the evidence for the model?`, context,
     `The relationship is approximately linear, but the non-zero intercept should be investigated before concluding that y is directly proportional to x.`,
     [`The graph proves y is directly proportional to x because both quantities increase.`, `The gradient equals ${intercept.toFixed(2)}.`, `Random uncertainty can explain any systematic non-zero intercept without further analysis.`],
-    ["linear confused with proportional", "gradient and intercept confused", "systematic effect dismissed"]);
+    ["linear confused with proportional", "gradient and intercept confused", "systematic effect dismissed"]));
   if (paper.id === "p1b") {
     const marks = d <= 2 ? 4 : d === 3 ? 6 : 8;
     const prompt = d <= 2
@@ -521,9 +522,9 @@ function physics(subject: Subject, paper: Paper, node: ScienceNode, v: number, d
       : d === 3
         ? `(a) Determine the gradient and intercept of a best-fit model. [3]\n(b) Interpret the gradient in the context of ${node.title}. [2]\n(c) Comment on whether the intercept is significant. [1]`
         : `(a) Analyse the data to obtain k with an uncertainty estimate. [4]\n(b) Evaluate the model assumptions using the intercept and scatter. [2]\n(c) Propose one specific improvement linked to a physical error pathway. [2]`;
-    return base(subject, paper, node, v, d, prompt, context, d >= 4 ? "Analyse" : "Determine", marks,
+    return graph(base(subject, paper, node, v, d, prompt, context, d >= 4 ? "Analyse" : "Determine", marks,
       [`Write the governing relationship symbolically before substitution.`, `Use a best-fit gradient or clearly chosen widely separated points with units.`, `Distinguish a linear relationship from direct proportionality and interpret the intercept.`, `Relate uncertainty or an improvement to a named physical mechanism.`],
-      ["equation omitted", "unit or direction omitted", "gradient taken from one point", "human error"]);
+      ["equation omitted", "unit or direction omitted", "gradient taken from one point", "human error"]));
   }
   const marks = d <= 2 ? 4 : d === 3 ? 7 : 10;
   const prompt = d <= 2
@@ -531,9 +532,9 @@ function physics(subject: Subject, paper: Paper, node: ScienceNode, v: number, d
     : d === 3
       ? `Explain how ${node.concepts[0]} and ${node.concepts[1]} determine the observed behaviour. Include a labelled representation and a quantitative relationship.`
       : `Develop and evaluate a model for ${node.title} using the data. State assumptions, calculate a prediction and explain one physical reason for any disagreement.`;
-  return base(subject, paper, node, v, d, prompt, context, d >= 4 ? "Evaluate" : "Determine", marks,
+  return graph(base(subject, paper, node, v, d, prompt, context, d >= 4 ? "Evaluate" : "Determine", marks,
     [`Define the system and use a relevant diagram, field, ray or force representation where needed.`, `Write equations symbolically and use consistent sign/vector conventions.`, `Substitute with units, appropriate precision and a sanity check.`, `Interpret the result physically and evaluate a stated modelling assumption.`],
-    ["formula selected without model", "vector direction ignored", "area/gradient has no defined meaning", "limitation not linked to result"]);
+    ["formula selected without model", "vector direction ignored", "area/gradient has no defined meaning", "limitation not linked to result"]));
 }
 
 function computerScience(subject: Subject, paper: Paper, node: ScienceNode, v: number, d: number, language: "python" | "java"): Question {
@@ -546,9 +547,12 @@ function computerScience(subject: Subject, paper: Paper, node: ScienceNode, v: n
       : d === 3
         ? `Analyse one design decision involving ${node.title}. Use two constraints from the scenario.`
         : `Recommend and justify a change involving ${node.title}. Trace its effect through the system and identify one residual risk.`;
-    return base(subject, paper, node, v, d, prompt, context, d >= 4 ? "Recommend" : d === 3 ? "Analyse" : "Describe", marks,
+    const question = base(subject, paper, node, v, d, prompt, context, d >= 4 ? "Recommend" : d === 3 ? "Analyse" : "Describe", marks,
       [`Use exact technical vocabulary and scenario constraints.`, `Trace input/data → processing/control → output or system consequence.`, `For security use threat → vulnerability → control → residual risk.`, `Distinguish what the technology does from why it fits this scenario.`],
       ["technology described without application", "bandwidth treated as latency", "security control claimed to remove all risk", "constraint ignored"]);
+    if (node.code.startsWith("A2")) return { ...question, visual: "network" };
+    if (node.code.startsWith("A3")) return { ...question, visual: "erd" };
+    return question;
   }
   const starter = language === "python"
     ? `def valid_readings(values):\n    result = []\n    # return valid values in ascending order without duplicates\n    return result`
