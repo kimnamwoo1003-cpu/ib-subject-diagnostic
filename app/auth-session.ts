@@ -11,7 +11,7 @@ export async function startSession(username: string) {
   const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000).toISOString();
   await db.delete(sessions).where(lt(sessions.expiresAt, new Date().toISOString()));
   await db.insert(sessions).values({ tokenHash, username, expiresAt });
-  return sessionCookie(token);
+  return { token, cookie: sessionCookie(token) };
 }
 
 export async function endSession(token: string | null) {
