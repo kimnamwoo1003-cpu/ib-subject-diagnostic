@@ -5,6 +5,8 @@ export const accounts = sqliteTable("accounts", {
   username: text("username").primaryKey(),
   passwordHash: text("password_hash").notNull(),
   passwordSalt: text("password_salt").notNull(),
+  recoveryHash: text("recovery_hash"),
+  recoverySalt: text("recovery_salt"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
