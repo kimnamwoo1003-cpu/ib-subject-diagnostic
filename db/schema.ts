@@ -20,6 +20,7 @@ export const profiles = sqliteTable("profiles", {
   displayName: text("display_name").notNull(),
   premium: integer("premium", { mode: "boolean" }).notNull().default(false),
   selectedSubjects: text("selected_subjects").notNull().default("[]"),
+  subjectLevels: text("subject_levels").notNull().default("{}"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
