@@ -38,6 +38,7 @@ export async function ensureSchema() {
       display_name text NOT NULL,
       premium integer DEFAULT 0 NOT NULL,
       selected_subjects text DEFAULT '[]' NOT NULL,
+      subject_levels text DEFAULT '{}' NOT NULL,
       created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL,
       updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
     )`),
@@ -65,6 +66,7 @@ export async function ensureSchema() {
     env.DB.prepare("CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions (expires_at)"),
   ]);
   for (const statement of [
+    "ALTER TABLE profiles ADD COLUMN subject_levels text DEFAULT '{}' NOT NULL",
     "ALTER TABLE test_attempts ADD COLUMN criteria_breakdown text DEFAULT '[]' NOT NULL",
     "ALTER TABLE test_attempts ADD COLUMN question_ids text DEFAULT '[]' NOT NULL",
     "ALTER TABLE test_attempts ADD COLUMN difficulty_trail text DEFAULT '[]' NOT NULL",
