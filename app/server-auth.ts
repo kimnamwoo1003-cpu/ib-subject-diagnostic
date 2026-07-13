@@ -1,18 +1,28 @@
-import { getChatGPTUser } from "./chatgpt-auth";
+import { and, eq, gt } from "drizzle-orm";
+import { headers } from "next/headers";
+import { ensureSchema, getDb } from "../db";
+import { accounts, sessions } from "../db/schema";
+import { hashSessionToken, SESSION_COOKIE } from "./password-auth";
 
-export async function isAdminEmail(email: string) {
-  const { env } = await import("cloudflare:workers");
-  const configured = String(env.ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((value) => value.trim().toLowerCase())
-    .filter(Boolean);
-  return configured.includes(email.trim().toLowerCase());
+export const ADMIN_USERNAME = "justinnamwoo1003";
+
+export function isAdminUsername(username: string) {
+  return username.trim().toLowerCase() === ADMIN_USERNAME;
 }
 
 export async function requireApiUser() {
-  const user = await getChatGPTUser();
-  if (!user) return null;
-  return { ...user, isAdmin: await isAdminEmail(user.email) };
+  const requestHeaders = await headers();
+  const cookie = requestHeaders.get("cookie") ?? "";
+  const token = cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length + 1);
+  if (!token) return null;
+  await ensureSchema();
+  const db = await getDb();
+  const tokenHash = await hashSessionToken(token);
+  const [row] = await db.select({ username: accounts.username }).from(sessions)
+    .innerJoin(accounts, eq(accounts.username, sessions.username))
+    .where(and(eq(sessions.tokenHash, tokenHash), gt(sessions.expiresAt, new Date().toISOString()))).limit(1);
+  if (!row) return null;
+  return { email: row.username, displayName: row.username, fullName: row.username, isAdmin: isAdminUsername(row.username) };
 }
 
 export function safeJson<T>(value: string, fallback: T): T {
