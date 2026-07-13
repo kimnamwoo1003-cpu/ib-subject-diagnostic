@@ -10,7 +10,7 @@ export async function GET() {
     await ensureSchema();
     const db = await getDb();
     const rows = await db.select().from(profiles).orderBy(asc(profiles.displayName), asc(profiles.email));
-    return Response.json({ users: rows.map((row) => ({ ...row, selectedSubjects: safeJson(row.selectedSubjects, []) })) });
+    return Response.json({ users: rows.map((row) => ({ ...row, selectedSubjects: safeJson(row.selectedSubjects, []), subjectLevels: safeJson(row.subjectLevels, {}) })) });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Admin data unavailable" }, { status: 500 });
   }
@@ -25,5 +25,5 @@ export async function PATCH(request: Request) {
   const db = await getDb();
   const [updated] = await db.update(profiles).set({ premium: payload.premium, updatedAt: new Date().toISOString() }).where(eq(profiles.email, payload.email)).returning();
   if (!updated) return Response.json({ error: "Account not found" }, { status: 404 });
-  return Response.json({ user: { ...updated, selectedSubjects: safeJson(updated.selectedSubjects, []) } });
+  return Response.json({ user: { ...updated, selectedSubjects: safeJson(updated.selectedSubjects, []), subjectLevels: safeJson(updated.subjectLevels, {}) } });
 }
