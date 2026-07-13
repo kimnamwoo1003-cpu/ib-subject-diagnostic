@@ -45,6 +45,26 @@ test("mathematics paper grammar and markscheme-first metadata are enforced", () 
   }
 });
 
+test("every mathematics node has its own matching task archetype", () => {
+  const checks = {
+    math: { "1.2": /prove|counterexample|divisible/i, "1.6": /complex|Argand|cube roots/i, "3.4": /line|plane|vector/i, "5.4": /dP\/dt|population|separate variables/i },
+    "math-ai": { "1.2": /deposit|annuity|interest/i, "1.4": /polar|Argand|z=/i, "3.2": /Voronoi|service sites/i, "3.5": /network|spanning tree|Euler/i, "4.8": /transition matrix|steady-state|plans/i, "5.3": /Euler's method|dy\/dt/i },
+  };
+  for (const [id, nodes] of Object.entries(checks)) {
+    const subject = subjects.find((item) => item.id === id);
+    const paper = getPapers(subject, "HL").find((item) => item.id === "p2");
+    const topics = getRelevantTopics(subject, "HL", paper);
+    const pool = buildQuestionPool(subject, "HL", paper, topics, true, "python", 8, []);
+    for (const [code, pattern] of Object.entries(nodes)) {
+      const question = pool.find((item) => item.topicCode === code);
+      assert.ok(question, `${id} ${code} missing`);
+      assert.match(`${question.context} ${question.prompt}`, pattern, `${id} ${code} uses the wrong archetype`);
+    }
+    const onePerNode = topics.map((topic) => pool.find((item) => item.topicCode === topic.code)?.context);
+    assert.equal(new Set(onePerNode).size, topics.length, `${id} reuses a generic context across exact nodes`);
+  }
+});
+
 test("language variants use correct paper nodes, criteria and target-language stimuli", () => {
   const targetSignals = { french: /[àéèêç]|bibliothèque|œuvres/i, japanese: /[ぁ-んァ-ヶ一-龯]/, korean: /[가-힣]/, italian: /[àèéìòù]|biblioteca|opere|scrivi|confronta/i, chinese: /[\u4e00-\u9fff]/ };
   for (const id of languageIds) {

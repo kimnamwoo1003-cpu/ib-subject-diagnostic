@@ -346,10 +346,300 @@ function languageQuestion(subject: Subject, level: Level, paper: Paper, topic: D
 
 type MathTask = { context: (n: number) => string; prompt: (n: number) => string; answer: (n: number) => string; points: (n: number) => string[]; errors: string[] };
 
+const baseMathErrors = ["unsupported calculator output", "premature rounding", "missing domain, units or contextual interpretation"];
+const mt = (context: (n: number) => string, prompt: (n: number) => string, answer: (n: number) => string, points: string[]): MathTask => ({ context, prompt, answer, points: () => points, errors: baseMathErrors });
+
+const MATH_TASKS: Record<string, MathTask> = {
+  "math:1.1": mt(
+    (n) => `A metal rod is recorded as ${(12 + n / 10).toFixed(1)} cm, correct to the nearest 0.1 cm. Its mass is ${80 + n} g, correct to the nearest gram.`,
+    () => `Write the exact interval for the rod's length and determine the upper bound for its density. Give the final answer to three significant figures.`,
+    () => `Use half-unit bounds, divide the upper mass bound by the lower length bound, and round only the final density.`,
+    ["correct length interval", "correct mass and length bounds for a maximum", "valid upper-bound calculation", "final value to 3 s.f."],
+  ),
+  "math:1.2": mt(
+    (n) => `Let S(n) be the statement that ${n + 2}ⁿ − 1 is divisible by ${n + 1} for every positive integer n.`,
+    () => `Test the statement for three values, decide whether it is an identity or a proposition, and either prove it or give the least counterexample.`,
+    () => `Checking cases suggests a claim but is not proof. A valid response identifies the least counterexample if false or gives a complete deductive argument if true.`,
+    ["correct classification of the statement", "accurate test cases", "valid counterexample or deductive step", "logical conclusion"],
+  ),
+  "math:1.3": mt(
+    (n) => `A geometric sequence has first term ${3 + n} and common ratio ${(1.12 + n / 100).toFixed(2)}.`,
+    (n) => `Find an exact expression for Sₖ and determine the least k for which Sₖ exceeds ${300 + 25 * n}. Justify why the previous integer fails.`,
+    () => `Use the finite geometric-series formula, solve the threshold and check the two consecutive integer values.`,
+    ["correct finite-series expression", "valid logarithmic inequality or testing", "least integer k", "check of k − 1"],
+  ),
+  "math:1.4": mt(
+    (n) => `For x > 0, log₂(x) + log₂(x − ${n}) = ${3 + (n % 3)}.`,
+    () => `Solve the equation exactly and reject any extraneous solution using the original domain.`,
+    (n) => `Combine logarithms, solve x(x−${n}) = 2 raised to the stated power, then retain only x > ${n}.`,
+    ["correct logarithm law", "correct algebraic equation", "candidate roots", "domain-based rejection and exact answer"],
+  ),
+  "math:1.5": mt(
+    (n) => `P(x) = x³ − ${n + 2}x² − x + ${n + 2}.`,
+    () => `Factor P(x) fully. Hence decompose (2x + 1)/P(x) into partial fractions.`,
+    (n) => `P(x)=(x−${n + 2})(x−1)(x+1). Write three simple fractions and solve their coefficients consistently.`,
+    ["factor theorem or grouping", "complete factorization", "valid partial-fraction form", "correct coefficients"],
+  ),
+  "math:1.6": mt(
+    (n) => `The complex number z has modulus ${n + 1} and argument π/${n + 2}.`,
+    () => `Write z in Cartesian form and determine all cube roots of z in modulus–argument form. Describe their arrangement on an Argand diagram.`,
+    () => `Convert with cosine and sine, divide the argument plus 2kπ by 3 for k=0,1,2, and identify equal angular spacing.`,
+    ["correct Cartesian conversion", "correct root modulus", "three correct root arguments", "Argand arrangement described"],
+  ),
+  "math:2.1": mt(
+    (n) => `f(x) = (2x − ${n})/(x + 3), with x ≠ −3.`,
+    () => `Find f⁻¹(x), state its domain and range, and explain why one value must be excluded from each.`,
+    () => `Set y=f(x), rearrange for x, then exchange variables. The horizontal asymptote of f becomes the excluded input of the inverse.`,
+    ["correct rearrangement", "correct inverse", "domain and range exclusions", "reason for exclusions"],
+  ),
+  "math:2.2": mt(
+    (n) => `f(x) = (x − 1)²(x + ${n}).`,
+    () => `State the zeros with multiplicity, find the equation of the tangent at x = 0, and determine the exact area between the curve and x-axis from x = −n to x = 1.`,
+    () => `Use the repeated root, differentiate for the tangent, and integrate with the correct sign on the stated interval.`,
+    ["zeros and multiplicities", "derivative and tangent", "correct definite integral", "exact positive area"],
+  ),
+  "math:2.3": mt(
+    (n) => `g(x) = ${n + 2}/(x − 1) + 3.`,
+    () => `State both asymptotes and intercepts, sketch the graph with correct branch placement, and solve g(x)=x exactly.`,
+    () => `Read transformations from the reciprocal parent, calculate intercepts, and solve the resulting quadratic with restrictions.`,
+    ["vertical and horizontal asymptotes", "intercepts", "correct branch placement", "valid intersection solutions"],
+  ),
+  "math:2.4": mt(
+    (n) => `The graph of y=f(x) has a local maximum at (${n}, ${n + 3}) and a zero at x=${n + 4}.`,
+    () => `Describe the transformations producing y = 2|f(x − 1)| − 3 and give the images of the two stated features.`,
+    () => `Apply the horizontal translation first, then modulus, vertical stretch and downward translation to each coordinate/value.`,
+    ["correct transformation order", "horizontal coordinate images", "effect of modulus", "final feature coordinates"],
+  ),
+  "math:3.1": mt(
+    (n) => `A right prism has a triangular cross-section with sides ${n + 3}, ${n + 4} and ${n + 5} cm and length ${2 * n + 6} cm.`,
+    () => `Determine the cross-sectional area, total surface area and the angle between the longest diagonal of the prism and its base.`,
+    () => `Use Heron's formula, assemble all faces, then use three-dimensional Pythagoras and trigonometry for the angle.`,
+    ["cross-sectional area", "complete surface area", "correct 3D diagonal relation", "angle with units/degree accuracy"],
+  ),
+  "math:3.2": mt(
+    (n) => `For 0 ≤ x < 2π, 2sin²x − ${n % 2 + 1}sin x = 0.`,
+    () => `Solve the equation exactly and explain how the complete set follows from the unit circle.`,
+    () => `Factor in sin x, solve each factor and list every solution in the interval without duplicating endpoints.`,
+    ["correct factorization", "solutions from first factor", "solutions from second factor", "complete interval control"],
+  ),
+  "math:3.3": mt(
+    (n) => `A tide has maximum depth ${7 + n / 2} m, minimum depth ${2 + n / 4} m and consecutive maxima 12.4 hours apart. A maximum occurs at t=3.`,
+    () => `Construct a cosine model d(t)=a cos(b(t−c))+k and find the first time after t=3 when the depth equals the midline.`,
+    () => `Use half-range for amplitude, mean for vertical shift, 2π/period for b and the maximum time for phase shift.`,
+    ["amplitude and midline", "angular frequency", "phase shift", "first valid time"],
+  ),
+  "math:3.4": mt(
+    (n) => `Line L: r=(1,2,−1)+λ(2,${n},1). Plane Π: x−2y+${n}z=${n + 3}.`,
+    () => `Find the intersection of L and Π, determine the acute angle between the line and plane, and state the condition for no intersection.`,
+    () => `Substitute the line into the plane, use the direction vector and plane normal for the angle, and compare their scalar product for parallelism.`,
+    ["correct parameter at intersection", "intersection coordinates", "angle using direction and normal", "parallel/no-intersection condition"],
+  ),
+  "math:4.1": mt(
+    (n) => `The ordered data are 4, 6, ${n + 5}, ${n + 7}, 13, 16, 19, 24.`,
+    () => `Find the median and interquartile range, test for outliers using the 1.5IQR rule, and explain which summary measures are most appropriate.`,
+    () => `Calculate quartiles consistently, form both fences, identify any outlier, then justify median/IQR or mean/standard deviation from shape/outliers.`,
+    ["median", "quartiles and IQR", "outlier fences and decision", "justified summary choice"],
+  ),
+  "math:4.2": mt(
+    (n) => `For paired data, the regression of y on x is y=${n + 2}+1.8x and r=0.84. One observation is (6, ${n + 15}).`,
+    () => `Calculate its residual, interpret the gradient and correlation coefficient, and explain why the line must not be used to predict x from y.`,
+    () => `Residual is observed minus predicted. Interpret both statistics in context and distinguish the two regression directions.`,
+    ["predicted value", "signed residual", "gradient and r interpreted", "regression-direction limitation"],
+  ),
+  "math:4.3": mt(
+    (n) => `A biased coin has P(H)=${(0.35 + n / 100).toFixed(2)}. It is tossed ${6 + n} times.`,
+    () => `Find the probability of exactly three heads and the probability of at least one head, then calculate the expected number of heads.`,
+    () => `Use the binomial probability formula, the complement of zero heads and E(X)=np.`,
+    ["correct distribution parameters", "exactly-three probability", "complement probability", "expected value"],
+  ),
+  "math:5.1": mt(
+    (n) => `f(x)=(x²+${n})e⁻ˣ.`,
+    () => `Differentiate f, find the stationary points exactly where possible, and determine their nature using a valid sign or second-derivative argument.`,
+    () => `Use the product rule, factor the exponential term, solve the remaining quadratic and classify each root.`,
+    ["product-rule derivative", "stationary equation", "valid roots", "classification with justification"],
+  ),
+  "math:5.2": mt(
+    (n) => `An open box has square base x cm by x cm and volume ${500 + 50 * n} cm³.`,
+    () => `Express its surface area as a function of x, find the dimensions that minimize material, and verify a minimum.`,
+    () => `Eliminate height using volume, differentiate the area, solve the positive stationary condition and verify it is a minimum.`,
+    ["one-variable surface-area model", "derivative", "positive optimal x and height", "minimum verification"],
+  ),
+  "math:5.3": mt(
+    (n) => `The curves y=x² and y=${n + 2}x intersect in the first quadrant.`,
+    () => `Find their intersection points and the exact area enclosed. Hence find the volume when the region is rotated through 2π about the x-axis.`,
+    () => `Solve for intersections, integrate upper minus lower, then use washers with outer and inner radii.`,
+    ["intersection limits", "exact enclosed area", "correct washer integral", "exact volume"],
+  ),
+  "math:5.4": mt(
+    (n) => `A population P satisfies dP/dt=${n / 10}P(1−P/${1000 + 100 * n}), with P(0)=${80 + 5 * n}.`,
+    () => `Separate variables to obtain an implicit solution, identify the limiting population, and determine when the growth rate is greatest.`,
+    () => `Use partial fractions in the separation, apply the initial condition, read the carrying capacity and set P equal to half that value for maximum growth.`,
+    ["correct separation/partial fractions", "integrated relationship", "initial condition", "limit and maximum-growth condition"],
+  ),
+  "math-ai:1.1": mt(
+    (n) => `A journey is recorded as ${120 + n} km to the nearest kilometre and ${1.8 + n / 100} hours to the nearest 0.01 hour.`,
+    () => `Use technology to calculate the stated average speed and determine a justified interval containing the true average speed.`,
+    () => `Divide stated values for the estimate, then combine distance and time bounds in opposite directions for minimum and maximum speed.`,
+    ["calculator estimate", "distance bounds", "time bounds", "correct speed interval with units"],
+  ),
+  "math-ai:1.2": mt(
+    (n) => `A student deposits $${1200 + n * 80} at the end of each year into an account paying ${3.2 + n * .1}% annual interest, compounded yearly.`,
+    (n) => `Use technology to find the value after ${8 + n} deposits and the first year the balance exceeds $20 000. Interpret the payment timing.`,
+    () => `Use an ordinary-annuity model, solve the threshold numerically and interpret an end-of-period deposit.`,
+    ["correct finance model", "accurate balance", "threshold year", "payment timing interpreted"],
+  ),
+  "math-ai:1.3": mt(
+    (n) => `A café mixes two drinks. x+y=${90 + n} and ${2 + n / 10}x+${1 + n / 10}y=${150 + 2 * n}.`,
+    () => `Solve the system using technology, interpret both variables, and determine how the solution changes if the second total rises by 10%.`,
+    () => `Enter the simultaneous system, report the feasible solution with units, modify the parameter and compare both variables.`,
+    ["correct system entry", "original solution", "modified solution", "comparison in context"],
+  ),
+  "math-ai:1.4": mt(
+    (n) => `z=${n + 2}+${n}i.`,
+    () => `Use technology to write z in polar form, find z⁵, and locate z⁵ by quadrant and argument on an Argand diagram.`,
+    () => `Find modulus and argument, apply De Moivre's theorem and reduce the resulting argument to a standard interval.`,
+    ["modulus and argument", "polar form", "fifth power", "Argand interpretation"],
+  ),
+  "math-ai:1.5": mt(
+    (n) => `A=[[${n + 1},1],[2,${n + 2}]] and b=[[${2 * n + 3}],[${n + 7}]].`,
+    () => `Use matrix technology to solve Ax=b, verify the result by multiplication, and explain what det(A) indicates about uniqueness.`,
+    () => `Calculate A⁻¹b, multiply A by the result and connect a non-zero determinant with a unique solution.`,
+    ["correct matrix setup", "technology solution", "multiplication check", "determinant interpretation"],
+  ),
+  "math-ai:2.1": mt(
+    (n) => `A taxi fare is modelled by C=${n + 3}+${1.4 + n / 20}d, where d is distance in km.`,
+    () => `Interpret both parameters, state a sensible domain, and use the model to compare a 12 km journey with a quoted fixed fare of $25.`,
+    () => `Interpret intercept as initial charge and gradient as cost per kilometre, restrict distance and compare two numerical costs.`,
+    ["intercept interpreted", "gradient with units", "sensible domain", "calculation and decision"],
+  ),
+  "math-ai:2.2": mt(
+    (n) => `A technology fit gives h(t)=−4.9t²+${12 + n}t+${1 + n / 2} for the height of a ball.`,
+    () => `Find the maximum height and when it occurs, determine when the model predicts ground contact, and assess one physical limitation.`,
+    () => `Use the vertex/maximum command, solve h=0 for the positive root and comment on assumptions such as drag or model domain.`,
+    ["time of maximum", "maximum height", "positive ground-contact time", "physical limitation"],
+  ),
+  "math-ai:2.3": mt(
+    (n) => `A medicine concentration follows C(t)=${80 + 5 * n}(0.${82 + n})ᵗ mg L⁻¹.`,
+    () => `Find the percentage decrease per hour, the half-life and the first whole hour when C<10. Interpret the discrete time result.`,
+    () => `Read the decay factor, solve the half-life and threshold logarithmically/numerically, then round the threshold upward.`,
+    ["decay percentage", "half-life", "threshold solution", "whole-hour interpretation"],
+  ),
+  "math-ai:2.4": mt(
+    (n) => `f(x)=${n + 2}x+1 and g(x)=x² for x≥0.`,
+    () => `Find (g∘f)(x), (f∘g)(x) and g⁻¹(x). State a domain on which each inverse/composite expression is meaningful.`,
+    () => `Substitute in the correct order, use the principal square root for g⁻¹ and track all domain restrictions.`,
+    ["first composition", "second composition", "inverse", "domain control"],
+  ),
+  "math-ai:2.5": mt(
+    (n) => `Daily temperature is modelled by T(t)=${15 + n / 2}+${4 + n / 3}sin(π(t−${4 + n})/12), 0≤t≤24.`,
+    () => `Use technology to find the maximum, minimum and first time T exceeds the midline after t=0. Interpret the phase shift.`,
+    () => `Read amplitude/midline, solve on the specified domain and connect the phase parameter to the cycle timing.`,
+    ["maximum and minimum", "valid crossing time", "domain respected", "phase interpreted"],
+  ),
+  "math-ai:3.1": mt(
+    (n) => `A conical container has radius ${n + 2} cm, slant height ${n + 7} cm and is filled to 70% of its volume.`,
+    () => `Determine its vertical height, full volume and liquid volume. Give a justified final accuracy and units.`,
+    () => `Use Pythagoras for height, the cone-volume formula and multiply by 0.70 without premature rounding.`,
+    ["vertical height", "full volume", "70% volume", "accuracy and units"],
+  ),
+  "math-ai:3.2": mt(
+    (n) => `Service sites are A(1,2), B(${7 + n},3) and C(4,${8 + n}); a household is at P(4,4).`,
+    () => `Construct the relevant perpendicular-bisector equations, identify P's Voronoi cell and test whether moving P one unit north changes the nearest site.`,
+    () => `Compare squared distances, identify equality boundaries and repeat for the shifted point.`,
+    ["bisector or equal-distance setup", "original nearest site", "shifted comparison", "Voronoi interpretation"],
+  ),
+  "math-ai:3.3": mt(
+    (n) => `A drone travels from A(2,1,0) to B(${n + 5},4,${n}) and then to C(${n + 7},${n + 4},2).`,
+    () => `Find both displacement vectors, the total path length and the direct distance AC. Interpret the difference between path length and displacement.`,
+    () => `Subtract position vectors, use vector magnitudes and distinguish a scalar route length from the resultant displacement.`,
+    ["two displacement vectors", "path length", "direct distance", "interpretation"],
+  ),
+  "math-ai:3.4": mt(
+    (n) => `A transformation has matrix [[1,${n}/2],[0,${n + 1}]].`,
+    () => `Find the image of the unit square, calculate its area scale factor and determine the inverse transformation when it exists.`,
+    () => `Transform all vertices, use the determinant for area scale and calculate the inverse from a non-zero determinant.`,
+    ["transformed vertices", "image described", "determinant/area scale", "inverse and existence condition"],
+  ),
+  "math-ai:3.5": mt(
+    (n) => `A weighted network has edges AB=${n + 1}, AC=${n + 4}, BC=3, BD=${n + 2}, CD=4 and CE=${n + 5}, DE=2.`,
+    () => `Use a suitable algorithm to find a minimum spanning tree, give its total weight and state whether the network has an Euler trail.`,
+    () => `Apply Kruskal or Prim without cycles, total the chosen edges and use odd vertex degrees for the Euler condition.`,
+    ["valid algorithm trace", "correct spanning edges", "total weight", "Euler decision from degrees"],
+  ),
+  "math-ai:4.1": mt(
+    (n) => `A school surveys every ${n + 3}rd student entering the cafeteria about sleep. Students absent that day are not sampled.`,
+    () => `Name the sampling method, identify two possible biases and recommend a design that better represents the school.`,
+    () => `Recognize systematic sampling, distinguish frame/non-response or timing bias and propose stratification/random selection.`,
+    ["sampling method", "first bias", "second bias", "improved design"],
+  ),
+  "math-ai:4.2": mt(
+    (n) => `For 12 observations, r=${(.76 + n / 100).toFixed(2)} and y=${n + 4}+${(1.7 + n / 20).toFixed(2)}x. One point is (${n + 2}, ${3 * n + 12}).`,
+    () => `Calculate the residual, interpret the gradient and r, and assess a prediction at an x-value twice the observed maximum.`,
+    () => `Compute observed minus predicted, interpret both measures in context and reject/qualify strong extrapolation.`,
+    ["prediction", "signed residual", "gradient and r interpreted", "validation/extrapolation judgement"],
+  ),
+  "math-ai:4.3": mt(
+    (n) => `X has values 0, 1, 3 with probabilities 0.2, ${(0.35 + n / 100).toFixed(2)} and k.`,
+    () => `Find k, E(X) and Var(X). A reward is R=5X−4; determine E(R) without constructing a second table.`,
+    () => `Normalize probabilities, calculate first and second moments and use linearity E(5X−4)=5E(X)−4.`,
+    ["k", "expectation", "variance", "transformed expectation"],
+  ),
+  "math-ai:4.4": mt(
+    (n) => `Calls arrive at a mean rate of ${2 + n / 2} per 10 minutes.`,
+    () => `Use technology to find the probability of at least three calls in 10 minutes and exactly six in 20 minutes. State the assumptions of the model.`,
+    () => `Use Poisson distributions with the correct interval rates, a complement where helpful, and state independence/constant rate.`,
+    ["correct first rate", "at-least probability", "scaled 20-minute rate and probability", "assumptions"],
+  ),
+  "math-ai:4.5": mt(
+    (n) => `A sample of ${40 + 2 * n} students gives a p-value of ${(0.018 + n / 1000).toFixed(3)} when testing whether a new schedule changes mean sleep.`,
+    () => `State suitable hypotheses, reach a conclusion at 5% and 1% significance, and explain what the p-value does not mean.`,
+    () => `Use a two-sided alternative, compare p with both α levels and reject the claim that p is the probability H₀ is true.`,
+    ["hypotheses", "5% conclusion", "1% conclusion", "correct p-value interpretation"],
+  ),
+  "math-ai:4.6": mt(
+    (n) => `Independent X and Y have E(X)=${n + 2}, Var(X)=3, E(Y)=${2 * n}, Var(Y)=5. Let Z=2X−Y+4.`,
+    () => `Determine E(Z) and Var(Z), then explain exactly where independence is used.`,
+    () => `Apply linearity to expectation and add squared-coefficient variances only because covariance is zero under independence.`,
+    ["expectation transformation", "squared coefficients", "variance", "independence/covariance explanation"],
+  ),
+  "math-ai:4.7": mt(
+    (n) => `A sample mean is ${52 + n / 2}, with sample standard deviation ${8 + n / 3} and sample size ${40 + n}.`,
+    () => `Use technology to construct a 95% confidence interval for the population mean and interpret it without assigning a probability to the fixed parameter.`,
+    () => `Use an appropriate t interval, report endpoints and interpret the repeated-sampling method rather than saying the parameter has 95% probability.`,
+    ["correct interval procedure", "standard error/technology input", "interval endpoints", "valid confidence interpretation"],
+  ),
+  "math-ai:4.8": mt(
+    (n) => `Customers move between Basic and Premium plans with transition matrix [[0.${80 + n},0.${20 - n}],[0.${15 + n},0.${85 - n}]], using row state vectors.`,
+    () => `Starting from (0.7,0.3), find the distribution after six periods and the steady-state distribution. Interpret the long-term result.`,
+    () => `Multiply the row vector repeatedly/use a matrix power, solve πP=π with components summing to 1 and interpret proportions.`,
+    ["orientation and valid transition matrix", "six-period state", "steady-state equations", "long-term interpretation"],
+  ),
+  "math-ai:5.1": mt(
+    (n) => `Profit is P(x)=−0.04x³+${1 + n / 10}x²+${8 + n}x−${100 + 5 * n} for 0≤x≤40.`,
+    () => `Use technology to find the production level giving maximum profit, compare endpoint values and interpret any non-integer optimum.`,
+    () => `Find numerical stationary points on the domain, compare all candidates/endpoints and choose a feasible integer policy if required.`,
+    ["stationary candidates", "domain/endpoints", "maximum value and x", "integer/context interpretation"],
+  ),
+  "math-ai:5.2": mt(
+    (n) => `Water enters a tank at R(t)=${8 + n}+${3 + n / 2}sin(πt/12) litres per minute for 0≤t≤24.`,
+    () => `Use technology to find the total volume added, the mean inflow rate and the time by which half the total volume has entered.`,
+    () => `Integrate over the interval, divide by interval length for the mean, then solve an accumulation equation for half the total.`,
+    ["total definite integral", "units", "mean value", "half-accumulation time"],
+  ),
+  "math-ai:5.3": mt(
+    (n) => `dy/dt=${n / 10}(20−y), y(0)=${2 + n}.`,
+    () => `Use Euler's method with step 0.5 to estimate y(2), compare it with a technology solution of the differential equation and discuss one source of numerical error.`,
+    () => `Construct four Euler updates, solve or graph the exact model with technology, compare values and connect error to finite step size.`,
+    ["Euler recurrence", "four correct steps", "technology/exact comparison", "numerical-error discussion"],
+  ),
+};
+
 const mathTask = (topic: DetailedTopic, ai: boolean, paper: Paper): MathTask => {
   const unit = Number(topic.code.split(".")[0]);
   const title = topic.title;
   const errors = ["unsupported calculator output", "premature rounding", "missing domain, units or contextual interpretation"];
+  const exactTask = MATH_TASKS[`${ai ? "math-ai" : "math"}:${topic.code}`];
+  if (exactTask) return exactTask;
   if (!ai && unit === 1) return { context: (n) => `Let uₙ = ${n + 2}(${n + 1}/2)ⁿ⁻¹ for n ≥ 1. Give exact values unless otherwise stated.`, prompt: (n) => `${paper.id === "p1" ? "Without technology, " : ""}determine the first n for which uₙ > ${5000 + 400 * n}, and justify the transition from n − 1 to n.`, answer: () => `Substitute consecutive integer values, establish the first crossing, and show the preceding term does not satisfy the inequality.`, points: () => ["forms or uses the correct term", "tests the threshold with sufficient accuracy", "checks n − 1", "states the least integer n"], errors };
   if (!ai && unit === 2) return { context: (n) => `The function f(x) = x³ − ${n + 2}x² − x + ${n + 2} is defined for real x.`, prompt: () => `${paper.id === "p1" ? "Without technology, factor f(x) fully, " : "Find all zeros of f, "}then determine the exact area enclosed by its graph and the x-axis between the two smallest zeros.`, answer: (n) => `Group terms to obtain (x − ${n + 2})(x − 1)(x + 1), identify the relevant interval, integrate |f(x)| exactly and evaluate the bounds.`, points: () => ["correct factorization", "correct zeros and interval", "correct antiderivative", "exact positive area"], errors };
   if (!ai && unit === 3) return { context: (n) => `In triangle ABC, AB = ${n + 5}, AC = ${n + 7} and angle BAC = ${40 + n}°.`, prompt: () => `Determine BC and then find angle ABC. State why the second angle solution is rejected.`, answer: () => `Apply the cosine rule for BC, then the sine rule; reject the supplementary angle because it is inconsistent with the side ordering/angle sum.`, points: () => ["correct cosine-rule substitution", "value of BC", "sine-rule equation", "valid angle with ambiguity resolved"], errors };
