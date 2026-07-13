@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { ensureSchema, getDb } from "../../../../db";
 import { accounts, profiles } from "../../../../db/schema";
 import { startSession } from "../../../auth-session";
-import { createPasswordRecord, normalizeUsername, validatePassword, validateUsername } from "../../../password-auth";
+import { createPasswordRecord, createRecoveryCode, normalizeRecoveryCode, normalizeUsername, validatePassword, validateUsername } from "../../../password-auth";
 import { ADMIN_USERNAME } from "../../../server-auth";
 import { apiJson, apiOptions } from "../../../api-response";
 
@@ -34,9 +34,11 @@ export async function POST(request: Request) {
     stage = "password protection";
     const { env } = await import("cloudflare:workers");
     const passwordRecord = await createPasswordRecord(password, String(env.AUTH_PEPPER ?? ""));
+    const recoveryCode = createRecoveryCode();
+    const recoveryRecord = await createPasswordRecord(normalizeRecoveryCode(recoveryCode), String(env.AUTH_PEPPER ?? ""));
     stage = "account creation";
     try {
-      await db.insert(accounts).values({ username, ...passwordRecord });
+      await db.insert(accounts).values({ username, ...passwordRecord, recoveryHash: recoveryRecord.passwordHash, recoverySalt: recoveryRecord.passwordSalt });
     } catch {
       const [conflict] = await db.select({ username: accounts.username }).from(accounts).where(eq(accounts.username, username)).limit(1);
       if (conflict) return apiJson(request, { code: "username_taken", error: "This username is already in use." }, { status: 409 });
@@ -46,7 +48,7 @@ export async function POST(request: Request) {
     await db.insert(profiles).values({ email: username, displayName: username }).onConflictDoNothing();
     stage = "session creation";
     const session = await startSession(username);
-    const response = apiJson(request, { user: { username }, token: session.token }, { status: 201 });
+    const response = apiJson(request, { user: { username }, token: session.token, recoveryCode }, { status: 201 });
     response.headers.set("set-cookie", session.cookie);
     return response;
   } catch (error) {
