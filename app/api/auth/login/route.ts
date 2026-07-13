@@ -3,6 +3,9 @@ import { ensureSchema, getDb } from "../../../../db";
 import { accounts } from "../../../../db/schema";
 import { startSession } from "../../../auth-session";
 import { normalizeUsername, verifyPassword } from "../../../password-auth";
+import { apiJson, apiOptions } from "../../../api-response";
+
+export const OPTIONS = apiOptions;
 
 export async function POST(request: Request) {
   try {
@@ -12,14 +15,16 @@ export async function POST(request: Request) {
     await ensureSchema();
     const db = await getDb();
     const [account] = await db.select().from(accounts).where(eq(accounts.username, username)).limit(1);
-    if (!account || !(await verifyPassword(password, account.passwordSalt, account.passwordHash))) {
-      return Response.json({ error: "계정 이름 또는 비밀번호가 올바르지 않습니다." }, { status: 401 });
+    const { env } = await import("cloudflare:workers");
+    if (!account || !(await verifyPassword(password, account.passwordSalt, account.passwordHash, String(env.AUTH_PEPPER ?? "")))) {
+      return apiJson(request, { error: "The username or password is incorrect." }, { status: 401 });
     }
-    const response = Response.json({ user: { username } });
-    response.headers.set("set-cookie", await startSession(username));
+    const session = await startSession(username);
+    const response = apiJson(request, { user: { username }, token: session.token });
+    response.headers.set("set-cookie", session.cookie);
     return response;
   } catch (error) {
     console.error("Login failed", error);
-    return Response.json({ error: "로그인할 수 없습니다. 잠시 후 다시 시도해 주세요." }, { status: 500 });
+    return apiJson(request, { error: "Could not log in. Please try again shortly." }, { status: 500 });
   }
 }
