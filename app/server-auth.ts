@@ -13,7 +13,8 @@ export function isAdminUsername(username: string) {
 export async function requireApiUser() {
   const requestHeaders = await headers();
   const cookie = requestHeaders.get("cookie") ?? "";
-  const token = cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length + 1);
+  const bearer = requestHeaders.get("authorization")?.match(/^Bearer\s+([a-f0-9]{64})$/i)?.[1];
+  const token = bearer ?? cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length + 1);
   if (!token) return null;
   await ensureSchema();
   const db = await getDb();
