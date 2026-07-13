@@ -1,10 +1,9 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-const repositoryName = process.env.GITHUB_REPOSITORY?.split("/")[1];
-
 export default defineConfig({
-  base: repositoryName ? `/${repositoryName}/` : "/",
+  // Keep the committed preview and the Actions build on the same project path.
+  base: "/ib-subject-diagnostic/",
   plugins: [react()],
   build: {
     outDir: "docs",

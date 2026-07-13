@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { buildQuestionPool, getAssessmentCriteria, getPapers, getRelevantTopics, Level, Question, subjectCatalog, subjects } from "./data";
+import { BrandLockup, BrandLogo } from "./logo";
 
 type Stage = "loading" | "signin" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "setup" | "test" | "result";
 type TestMode = "diagnostic" | "monthly";
@@ -22,7 +23,7 @@ type MeData = {
 };
 
 const gradeFromPercent = (percent: number) => percent >= 84 ? 7 : percent >= 72 ? 6 : percent >= 60 ? 5 : percent >= 48 ? 4 : percent >= 36 ? 3 : percent >= 22 ? 2 : 1;
-const normalize = (value: string) => value.toLowerCase().replace(/[–—]/g, "-").replace(/[^a-z0-9가-힣\s-]/g, " ");
+const normalize = (value: string) => value.toLocaleLowerCase().replace(/[–—]/g, "-").replace(/[^\p{L}\p{N}\s-]/gu, " ");
 const formatTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 const formatDuration = (seconds: number) => seconds ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : "—";
 
@@ -43,8 +44,9 @@ function scoreQuestion(question: Question, answer: string) {
   const response = normalize(answer);
   const hits = question.keywords.filter((keyword) => response.includes(normalize(keyword))).length;
   const coverage = hits / Math.max(question.keywords.length, 1);
-  const development = Math.min(answer.trim().length / (question.responseType === "extended" ? 220 : question.responseType === "code" ? 140 : 65), 1);
-  return Math.round(question.marks * Math.min(coverage * 0.72 + development * 0.28, 1));
+  const development = Math.min(answer.trim().length / (question.responseType === "extended" ? 900 : question.responseType === "code" ? 140 : 110), 1);
+  const languageResponse = question.responseType === "extended" && Boolean(question.criterionCodes?.length);
+  return Math.round(question.marks * Math.min(languageResponse ? coverage * .38 + development * .62 : coverage * 0.72 + development * 0.28, 1));
 }
 
 function scoreCriterion(question: Question, answer: string, criterion: { name: string; keywords?: string[] }) {
@@ -52,13 +54,18 @@ function scoreCriterion(question: Question, answer: string, criterion: { name: s
   if (question.responseType === "mcq") return scoreQuestion(question, answer);
   const lower = answer.toLowerCase();
   const words = answer.trim().split(/\s+/).filter(Boolean);
+  const characterCount = Array.from(answer.replace(/\s/g, "")).length;
   const paragraphs = answer.split(/\n\s*\n/).filter((part) => part.trim()).length;
   const name = criterion.name.toLowerCase();
   const topicHits = question.keywords.filter((keyword) => lower.includes(keyword.toLowerCase())).length / Math.max(question.keywords.length, 1);
-  const analysisHits = ["because", "therefore", "suggests", "implies", "effect", "demonstrates", "whereas", "however"].filter((term) => lower.includes(term)).length / 4;
-  const evidenceHits = [/“[^”]+”/, /"[^"]+"/, /for example/i, /evidence/i].filter((pattern) => pattern.test(answer)).length / 2;
-  const organization = Math.min((paragraphs >= 2 ? .55 : .25) + (["however", "therefore", "furthermore", "in contrast", "overall"].filter((term) => lower.includes(term)).length * .12), 1);
-  const language = Math.min(words.length / (question.responseType === "extended" ? 180 : 70), 1) * .55 + Math.min(new Set(words.map((word) => word.toLowerCase())).size / Math.max(words.length, 1), .75) * .6;
+  const analysisTerms = ["because", "therefore", "suggests", "implies", "effect", "however", "왜냐하면", "따라서", "보여준다", "효과", "그러나", "parce que", "donc", "suggère", "effet", "cependant", "perché", "quindi", "suggerisce", "effetto", "tuttavia", "因此", "说明", "效果", "然而", "なぜなら", "したがって", "示して", "効果", "しかし"];
+  const organizationTerms = ["however", "therefore", "furthermore", "in contrast", "overall", "그러나", "따라서", "더 나아가", "반면", "종합하면", "cependant", "donc", "en revanche", "dans l'ensemble", "tuttavia", "quindi", "invece", "nel complesso", "然而", "因此", "相比之下", "总的来说", "しかし", "したがって", "一方", "全体として"];
+  const analysisHits = analysisTerms.filter((term) => lower.includes(term)).length / 4;
+  const evidenceHits = [/“[^”]+”/, /「[^」]+」/, /『[^』]+』/, /"[^"]+"/, /for example|예를 들어|par exemple|per esempio|例如|例えば/i, /evidence|근거|preuve|prova|证据|根拠/i].filter((pattern) => pattern.test(answer)).length / 2;
+  const organization = Math.min((paragraphs >= 2 ? .55 : .25) + (organizationTerms.filter((term) => lower.includes(term)).length * .12), 1);
+  const lengthControl = Math.min(Math.max(words.length / (question.responseType === "extended" ? 180 : 70), characterCount / (question.responseType === "extended" ? 650 : 220)), 1);
+  const lexicalVariety = Math.min(new Set(Array.from(normalize(answer).replace(/\s/g, ""))).size / Math.max(characterCount, 1) * 4, 1);
+  const language = lengthControl * .62 + lexicalVariety * .38;
   let coverage = topicHits;
   if (name.includes("analysis") || name.includes("evaluation")) coverage = Math.min(analysisHits * .55 + evidenceHits * .45, 1);
   else if (name.includes("focus") || name.includes("organization")) coverage = organization;
@@ -261,13 +268,13 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const allMistakes = me?.attempts.flatMap((attempt) => attempt.mistakes.map((mistake) => ({ ...mistake, attempt }))) ?? [];
   const freeLocked = !me?.premium && (me?.attempts.length ?? 0) >= 1;
 
-  if (stage === "loading") return <main className="loading-screen"><div className="brand-mark">IB</div><strong>Loading your learning profile…</strong></main>;
-  if (stage === "signin") return <main className="loading-screen auth-screen"><div className="brand-mark">IB</div><h1>Log in or create your account</h1><p>Your subjects, one-time free test, Premium access and progress history are saved to your account.</p><div className="auth-actions"><a className="primary-button" href="/signin-with-chatgpt?return_to=%2F">Log in <span>→</span></a><a className="secondary-button" href="/signin-with-chatgpt?return_to=%2F">Sign up</a></div><small>First-time sign-in automatically creates a student account.</small></main>;
+  if (stage === "loading") return <main className="loading-screen"><BrandLogo/><strong>Loading your learning profile…</strong></main>;
+  if (stage === "signin") return <main className="loading-screen auth-screen"><BrandLogo/><h1>Log in or create your account</h1><p>Your subjects, one-time free test, Premium access and progress history are saved to your account.</p><div className="auth-actions"><a className="primary-button" href="/signin-with-chatgpt?return_to=%2F">Log in <span>→</span></a><a className="secondary-button" href="/signin-with-chatgpt?return_to=%2F">Sign up</a></div><small>First-time sign-in automatically creates a student account.</small></main>;
   if (stage === "onboarding") return <SubjectOnboarding name={me?.user.displayName ?? initialName} current={me?.selectedSubjects ?? []} onSaved={async () => { await loadMe(); }} />;
 
   return <main className="app-shell">
     <header className="topbar">
-      <button className="brand" onClick={goHome} aria-label="Go to dashboard"><span className="brand-mark">IB</span><span><strong>Subject Diagnostic</strong><small>Progress-based practice</small></span></button>
+      <button className="brand" onClick={goHome} aria-label="Go to dashboard"><BrandLockup/></button>
       <nav className="topbar-actions">
         <button className={`nav-link ${stage === "home" ? "active" : ""}`} onClick={goHome}>Dashboard</button>
         <button className={`nav-link ${stage === "reports" ? "active" : ""}`} onClick={() => setStage("reports")}>Reports</button>
@@ -336,7 +343,7 @@ function SubjectOnboarding({ name, current, onSaved }: { name: string; current: 
   const groups = Array.from(new Set(subjectCatalog.map((subject) => subject.group)));
   const save = async () => { setSaving(true); if (window.location.hostname.endsWith("github.io")) { let profile: Record<string, unknown> = {}; try { profile = JSON.parse(localStorage.getItem("ib-subject-diagnostic-profile") ?? "{}"); } catch { /* use empty profile */ } localStorage.setItem("ib-subject-diagnostic-profile", JSON.stringify({ ...profile, selectedSubjects: selected })); await onSaved(); setSaving(false); return; } const response = await fetch("/api/profile/subjects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subjects: selected }) }); if (response.ok) await onSaved(); setSaving(false); };
   const replaceSubject = (oldId: string) => { if (!pendingSubject) return; setSelected((items) => items.map((id) => id === oldId ? pendingSubject : id)); setPendingSubject(null); };
-  return <main className="onboarding-page"><div className="onboarding-header"><span className="brand-mark">IB</span><div><span className="eyebrow">SET UP YOUR DASHBOARD</span><h1>Choose your six IB subjects, {name}.</h1><p>Click a selected subject to remove it. If six are already selected, clicking a new subject opens a clear replacement choice.</p></div><div className="selection-counter"><strong>{selected.length}/6</strong><span>selected</span></div></div><div className="catalog-groups">{groups.map((group) => <section key={group}><h2>{group}</h2><div className="catalog-grid">{subjectCatalog.filter((subject) => subject.group === group).map((subject) => { const active = selected.includes(subject.id); const status = subject.availability ?? (subject.testAvailable ? "available" : "planned"); return <button type="button" key={subject.id} className={`catalog-card ${active ? "selected" : ""}`} onClick={() => active ? setSelected((items) => items.filter((id) => id !== subject.id)) : selected.length < 6 ? setSelected((items) => [...items, subject.id]) : setPendingSubject(subject.id)}><span className="catalog-check">{active ? "✓" : ""}</span><span><strong>{subject.name}</strong><small>{subject.levels}</small></span><em className={status === "available" ? "available" : status === "unavailable" ? "unavailable" : "soon"}>{status === "available" ? "Test available" : status === "unavailable" ? "Unavailable" : "Coming next"}</em></button>; })}</div></section>)}</div><div className="onboarding-save"><div><strong>Choose exactly six subjects</strong><span>You can change them later from the dashboard.</span></div><button className="primary-button" disabled={selected.length !== 6 || saving} onClick={() => void save()}>{saving ? "Saving…" : "Save my subjects"} <span>→</span></button></div>{pendingSubject && <div className="subject-swap-backdrop" role="dialog" aria-modal="true" aria-label="Replace a subject"><div className="subject-swap"><span className="eyebrow">REPLACE A SUBJECT</span><h2>Add {subjectCatalog.find((item) => item.id === pendingSubject)?.name}</h2><p>Choose which current subject to replace.</p><div>{selected.map((id) => <button type="button" key={id} onClick={() => replaceSubject(id)}>{subjectCatalog.find((item) => item.id === id)?.name ?? id}<span>Replace →</span></button>)}</div><button type="button" className="secondary-button" onClick={() => setPendingSubject(null)}>Cancel</button></div></div>}</main>;
+  return <main className="onboarding-page"><div className="onboarding-header"><BrandLogo/><div><span className="eyebrow">SET UP YOUR DASHBOARD</span><h1>Choose your six IB subjects, {name}.</h1><p>Click a selected subject to remove it. If six are already selected, clicking a new subject opens a clear replacement choice.</p></div><div className="selection-counter"><strong>{selected.length}/6</strong><span>selected</span></div></div><div className="catalog-groups">{groups.map((group) => <section key={group}><h2>{group}</h2><div className="catalog-grid">{subjectCatalog.filter((subject) => subject.group === group).map((subject) => { const active = selected.includes(subject.id); const status = subject.availability ?? (subject.testAvailable ? "available" : "planned"); return <button type="button" key={subject.id} className={`catalog-card ${active ? "selected" : ""}`} onClick={() => active ? setSelected((items) => items.filter((id) => id !== subject.id)) : selected.length < 6 ? setSelected((items) => [...items, subject.id]) : setPendingSubject(subject.id)}><span className="catalog-check">{active ? "✓" : ""}</span><span><strong>{subject.name}</strong><small>{subject.levels}</small></span><em className={status === "available" ? "available" : status === "unavailable" ? "unavailable" : "soon"}>{status === "available" ? "Test available" : status === "unavailable" ? "Unavailable" : "Coming next"}</em></button>; })}</div></section>)}</div><div className="onboarding-save"><div><strong>Choose exactly six subjects</strong><span>You can change them later from the dashboard.</span></div><button className="primary-button" disabled={selected.length !== 6 || saving} onClick={() => void save()}>{saving ? "Saving…" : "Save my subjects"} <span>→</span></button></div>{pendingSubject && <div className="subject-swap-backdrop" role="dialog" aria-modal="true" aria-label="Replace a subject"><div className="subject-swap"><span className="eyebrow">REPLACE A SUBJECT</span><h2>Add {subjectCatalog.find((item) => item.id === pendingSubject)?.name}</h2><p>Choose which current subject to replace.</p><div>{selected.map((id) => <button type="button" key={id} onClick={() => replaceSubject(id)}>{subjectCatalog.find((item) => item.id === id)?.name ?? id}<span>Replace →</span></button>)}</div><button type="button" className="secondary-button" onClick={() => setPendingSubject(null)}>Cancel</button></div></div>}</main>;
 }
 
 function PremiumDashboard({ attempts, onReports, onMistakes, onStatus }: { attempts: Attempt[]; onReports: () => void; onMistakes: () => void; onStatus: () => void }) {

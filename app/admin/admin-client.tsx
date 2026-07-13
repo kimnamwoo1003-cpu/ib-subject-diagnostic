@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { subjectCatalog } from "../data";
+import { BrandLockup } from "../logo";
 
 type UserRow = {
   email: string; displayName: string; premium: boolean; selectedSubjects: string[];
@@ -42,7 +43,7 @@ export default function AdminClient({ adminName }: { adminName: string }) {
   };
 
   return <main className="admin-page">
-    <header className="admin-topbar"><Link className="brand" href="/"><span className="brand-mark">IB</span><span><strong>Subject Diagnostic</strong><small>Administrator console</small></span></Link><div><span>Signed in as {adminName}</span><Link className="quiet-button" href="/">Student site</Link></div></header>
+    <header className="admin-topbar"><Link className="brand" href="/"><BrandLockup light/></Link><div><span>Signed in as {adminName}</span><Link className="quiet-button" href="/">Student site</Link></div></header>
     <div className="admin-container">
       <section className="admin-hero"><div><span className="eyebrow">ADMIN CONSOLE</span><h1>Account access</h1><p>Approve or remove Premium for any account that has signed in to the student site.</p></div><div className="admin-stats"><div><strong>{users.length}</strong><span>Accounts</span></div><div><strong>{users.filter((user) => user.premium).length}</strong><span>Premium</span></div><div><strong>{users.filter((user) => user.selectedSubjects.length === 6).length}</strong><span>Set up</span></div></div></section>
       <section className="admin-controls"><label><span>Search accounts</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Name or email address" /></label>{message && <p>{message}</p>}</section>

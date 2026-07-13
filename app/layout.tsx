@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "IB Subject Diagnostic",
   description:
-    "Progress-based SL and HL practice diagnostics for Physics, Mathematics AA, Computer Science and IB Individuals and Societies subjects.",
+    "Original IB-style adaptive diagnostics across languages, mathematics, sciences and individuals and societies.",
   other: {
     "codex-preview": "development",
   },

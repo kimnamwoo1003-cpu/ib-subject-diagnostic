@@ -1,4 +1,5 @@
 import { buildINSQuestionPool, getINSTopics } from "./ins-bank";
+import { buildLanguageMathQuestionPool, getLanguageMathTopics } from "./language-math-bank";
 import { buildScienceQuestionPool, getScienceTopics } from "./science-bank";
 
 export type Level = "SL" | "HL";
@@ -405,12 +406,12 @@ function languageA(id: string, name: string, shortName: string, literature: bool
     name: `${name} A: ${literature ? "Literature" : "Language & Literature"}`,
     shortName: `${shortName}A`,
     description: literature ? `Literary analysis and comparative argument in ${name}` : `Literary and non-literary analysis in ${name}`,
-    color: literature ? "#74465f" : "#8b3d62",
-    softColor: "#faeaf2",
+    color: literature ? "#1649b8" : "#1769e0",
+    softColor: "#eaf2ff",
     levels: ["SL", "HL"], group: "Languages", selectionMode: "multi",
     papers: [
-      { id: "p1", name: "Paper 1", description: literature ? "Guided literary analysis" : "Guided analysis of an unseen text", format: "Interpretation · analysis · focus · language" },
-      { id: "p2", name: "Paper 2", description: "Comparative essay on two studied works", format: "Knowledge · comparison · analysis · organization" },
+      { id: "p1", name: "Paper 1", description: literature ? "Guided literary analysis" : "Guided analysis of an unseen text", format: "Interpretation · analysis · focus · language", topicPrefixes: ["P1"] },
+      { id: "p2", name: "Paper 2", description: "Comparative essay on two studied works", format: "Knowledge · comparison · analysis · organization", topicPrefixes: ["P2"] },
     ],
     topics: englishATopics,
   };
@@ -420,10 +421,10 @@ function languageB(id: string, name: string, shortName: string): Subject {
   return {
     id: `${id}-b`, name: `${name} B`, shortName: `${shortName}B`,
     description: `Writing and receptive skills in ${name} across the five prescribed themes`,
-    color: "#c14a48", softColor: "#fdecea", levels: ["SL", "HL"], group: "Languages", selectionMode: "multi",
+    color: "#0b71d9", softColor: "#e9f4ff", levels: ["SL", "HL"], group: "Languages", selectionMode: "multi",
     papers: [
-      { id: "p1", name: "Paper 1: Writing", description: `Purposeful written response in ${name}`, format: "Language · message · conceptual understanding" },
-      { id: "p2r", name: "Paper 2: Reading", description: `Comprehension and interpretation in ${name}`, format: "Comprehension · inference · vocabulary in context" },
+      { id: "p1", name: "Paper 1: Writing", description: `Purposeful written response in ${name}`, format: "Language · message · conceptual understanding", topicPrefixes: ["P1"] },
+      { id: "p2r", name: "Paper 2: Reading", description: `Comprehension and interpretation in ${name}`, format: "Comprehension · inference · vocabulary in context", topicPrefixes: ["P2"] },
     ], topics: englishBTopics,
   };
 }
@@ -446,13 +447,13 @@ const expandedLanguageSubjects: Subject[] = [
 ];
 
 export const subjects: Subject[] = [
-  { id: "english-a", name: "English A: Language & Literature", shortName: "EA", description: "Unseen analysis, comparative argument and precise textual evidence", color: "#8b3d62", softColor: "#faeaf2", levels: ["SL", "HL"], group: "Languages", selectionMode: "multi", papers: [
-    { id: "p1", name: "Paper 1", description: "Guided analysis of an unseen non-literary text", format: "Textual analysis · authorial choices · audience and purpose" },
-    { id: "p2", name: "Paper 2", description: "Comparative essay on two studied literary works", format: "Comparative thesis · evidence · evaluation" },
+  { id: "english-a", name: "English A: Language & Literature", shortName: "EA", description: "Unseen analysis, comparative argument and precise textual evidence", color: "#1769e0", softColor: "#eaf2ff", levels: ["SL", "HL"], group: "Languages", selectionMode: "multi", papers: [
+    { id: "p1", name: "Paper 1", description: "Guided analysis of an unseen non-literary text", format: "Textual analysis · authorial choices · audience and purpose", topicPrefixes: ["P1"] },
+    { id: "p2", name: "Paper 2", description: "Comparative essay on two studied literary works", format: "Comparative thesis · evidence · evaluation", topicPrefixes: ["P2"] },
   ], topics: englishATopics },
-  { id: "english-b", name: "English B", shortName: "EB", description: "Writing and reading across the five prescribed themes", color: "#c14a48", softColor: "#fdecea", levels: ["SL", "HL"], group: "Languages", selectionMode: "multi", papers: [
-    { id: "p1", name: "Paper 1: Writing", description: "One written response for a specified audience, context and purpose", format: "Text type · register · organization · language" },
-    { id: "p2r", name: "Paper 2: Reading", description: "Comprehension and interpretation of written passages", format: "Short answer · inference · reference · vocabulary in context" },
+  { id: "english-b", name: "English B", shortName: "EB", description: "Writing and reading across the five prescribed themes", color: "#0b71d9", softColor: "#e9f4ff", levels: ["SL", "HL"], group: "Languages", selectionMode: "multi", papers: [
+    { id: "p1", name: "Paper 1: Writing", description: "One written response for a specified audience, context and purpose", format: "Text type · register · organization · language", topicPrefixes: ["P1"] },
+    { id: "p2r", name: "Paper 2: Reading", description: "Comprehension and interpretation of written passages", format: "Short answer · inference · reference · vocabulary in context", topicPrefixes: ["P2"] },
   ], topics: englishBTopics },
   ...expandedLanguageSubjects,
   { id: "biology", name: "Biology", shortName: "BI", description: "Conceptual understanding, data analysis and biological synthesis", color: "#297a4b", softColor: "#e9f7ee", levels: ["SL", "HL"], group: "Sciences", papers: [
@@ -483,12 +484,12 @@ export const subjects: Subject[] = [
     { id: "p1b", name: "Paper 1B", description: "Data-based and experimental skills questions", format: "Graphs · uncertainty · experimental analysis" },
     { id: "p2", name: "Paper 2", description: "Short-answer and extended-response questions", format: "Calculations · explanations · synthesis" },
   ], topics: physicsTopics },
-  { id: "math", name: "Mathematics: AA", shortName: "AA", description: "Exact reasoning, calculator strategy and extended problem solving", color: "#7450c8", softColor: "#f1edff", levels: ["SL", "HL"], group: "Mathematics", papers: [
+  { id: "math", name: "Mathematics: AA", shortName: "AA", description: "Exact reasoning, calculator strategy and extended problem solving", color: "#155eef", softColor: "#eaf2ff", levels: ["SL", "HL"], group: "Mathematics", papers: [
     { id: "p1", name: "Paper 1", description: "No technology allowed", format: "Short response · extended response · exact values" },
-    { id: "p2", name: "Paper 2", description: "Technology required", format: "GDC modelling · numerical methods · interpretation" },
+    { id: "p2", name: "Paper 2", description: "Technology allowed", format: "GDC strategy · numerical methods · interpretation" },
     { id: "p3", name: "Paper 3", description: "Two extended problem-solving investigations", format: "Sustained reasoning · unfamiliar contexts", levels: ["HL"] },
   ], topics: mathTopics },
-  { id: "math-ai", name: "Mathematics: AI", shortName: "AI", description: "Technology-rich modelling, statistics and applied problem solving", color: "#4f55b8", softColor: "#eef0ff", levels: ["SL", "HL"], group: "Mathematics", papers: [
+  { id: "math-ai", name: "Mathematics: AI", shortName: "AI", description: "Technology-rich modelling, statistics and applied problem solving", color: "#0b71d9", softColor: "#e9f4ff", levels: ["SL", "HL"], group: "Mathematics", papers: [
     { id: "p1", name: "Paper 1", description: "Technology required · compulsory short-response questions", format: "GDC · modelling · interpretation · concise working" },
     { id: "p2", name: "Paper 2", description: "Technology required · compulsory extended-response questions", format: "Applied contexts · sustained modelling · evaluation" },
     { id: "p3", name: "Paper 3", description: "Two compulsory extended-response problem-solving questions", format: "Technology required · unfamiliar contexts", levels: ["HL"] },
@@ -640,6 +641,8 @@ function generateTopicQuestions(subject: Subject, level: Level, paper: Paper, to
 }
 
 export function getLevelTopics(subject: Subject, level: Level) {
+  const detailedLanguageMath = getLanguageMathTopics(subject.id, level);
+  if (detailedLanguageMath) return detailedLanguageMath;
   const detailedScience = getScienceTopics(subject.id, level);
   if (detailedScience) return detailedScience;
   const detailedINS = getINSTopics(subject.id, level);
@@ -737,6 +740,8 @@ function makeVariant(question: Question, subject: Subject, paper: Paper, variant
 }
 
 export function buildQuestionPool(subject: Subject, level: Level, paper: Paper, topics: Topic[], premium: boolean, codeLanguage: "python" | "java" = "python", seed = 0, excludeIds: string[] = []) {
+  const detailedLanguageMath = buildLanguageMathQuestionPool(subject, level, paper, topics, premium, seed, excludeIds);
+  if (detailedLanguageMath) return detailedLanguageMath;
   const detailedScience = buildScienceQuestionPool(subject, level, paper, topics, premium, seed, excludeIds, codeLanguage);
   if (detailedScience) return detailedScience;
   const detailedINS = buildINSQuestionPool(subject, level, paper, topics, premium, seed, excludeIds);
