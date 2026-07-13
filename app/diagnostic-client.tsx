@@ -5,7 +5,7 @@ import { buildUniqueQuestionPool, getAssessmentCriteria, getPapers, getRelevantT
 import { BrandLockup, BrandLogo } from "./logo";
 import { buildTestPlan, isSingleTopicPaper, topicLimitFor, type TestMode } from "./test-policy";
 
-type Stage = "loading" | "signin" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "setup" | "test" | "result";
+type Stage = "loading" | "signin" | "recovery-code" | "account" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "setup" | "test" | "result";
 type Answers = Record<string, string>;
 type TopicScore = { code: string; title: string; percent: number; possible: number; earned: number };
 type CriterionScore = { code: string; name: string; description: string; percent: number; possible: number; earned: number };
@@ -110,10 +110,13 @@ function scoreCriterion(question: Question, answer: string, criterion: { name: s
 
 export default function DiagnosticClient({ initialName }: { initialName: string }) {
   const [stage, setStage] = useState<Stage>("loading");
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authMode, setAuthMode] = useState<"login" | "register" | "reset">("login");
   const [authUsername, setAuthUsername] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [adminSetupCode, setAdminSetupCode] = useState("");
+  const [authRecoveryCode, setAuthRecoveryCode] = useState("");
+  const [issuedRecoveryCode, setIssuedRecoveryCode] = useState("");
+  const [authNotice, setAuthNotice] = useState("");
   const [authError, setAuthError] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [me, setMe] = useState<MeData | null>(null);
@@ -137,6 +140,8 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const [savedResult, setSavedResult] = useState<{ percent: number; grade: number; comparison: Attempt | null; durationSeconds: number } | null>(null);
   const [saveError, setSaveError] = useState("");
   const [theme, setTheme] = useState<ThemeName>("blue");
+  const [levelSaving, setLevelSaving] = useState(false);
+  const [levelSaveStatus, setLevelSaveStatus] = useState("");
 
   useEffect(() => {
     const saved = localStorage.getItem("ibsd-theme") as ThemeName | null;
@@ -158,16 +163,28 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
 
   const submitAuth = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setAuthBusy(true); setAuthError("");
+    setAuthBusy(true); setAuthError(""); setAuthNotice("");
     try {
-      const response = await apiFetch(`/api/auth/${authMode === "login" ? "login" : "register"}`, {
+      const endpoint = authMode === "login" ? "login" : authMode === "register" ? "register" : "reset-password";
+      const response = await apiFetch(`/api/auth/${endpoint}`, {
         method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ username: authUsername, password: authPassword, adminCode: adminSetupCode }),
+        body: JSON.stringify(authMode === "reset"
+          ? { username: authUsername, recoveryCode: authRecoveryCode, newPassword: authPassword }
+          : { username: authUsername, password: authPassword, adminCode: adminSetupCode }),
       });
-      const data = await response.json() as { error?: string; token?: string };
+      const data = await response.json() as { error?: string; token?: string; recoveryCode?: string; message?: string };
       if (!response.ok) { setAuthError(data.error ?? "Could not complete the request."); return; }
+      if (authMode === "reset") {
+        setAuthMode("login"); setAuthPassword(""); setAuthRecoveryCode("");
+        setAuthNotice(data.message ?? "Password reset complete. Log in with your new password.");
+        return;
+      }
       if (isStaticPages() && data.token) localStorage.setItem("ibsd-session-token", data.token);
       setAuthPassword(""); setAdminSetupCode("");
+      if (authMode === "register" && data.recoveryCode) {
+        setIssuedRecoveryCode(data.recoveryCode); setStage("recovery-code");
+        return;
+      }
       await loadMe();
     } catch { setAuthError("Could not reach the server. Please try again shortly."); }
     finally { setAuthBusy(false); }
@@ -178,6 +195,17 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     localStorage.removeItem("ibsd-session-token");
     setMe(null); setAuthPassword(""); setAuthError(""); setStage("signin");
     window.scrollTo({ top: 0 });
+  };
+
+  const generateRecoveryCode = async () => {
+    setAuthBusy(true); setAuthError("");
+    try {
+      const response = await apiFetch("/api/auth/recovery-code", { method: "POST" });
+      const data = await response.json() as { recoveryCode?: string; error?: string };
+      if (!response.ok || !data.recoveryCode) throw new Error(data.error ?? "Could not create a recovery code.");
+      setIssuedRecoveryCode(data.recoveryCode);
+    } catch (error) { setAuthError(error instanceof Error ? error.message : "Could not create a recovery code."); }
+    finally { setAuthBusy(false); }
   };
 
   useEffect(() => {
@@ -243,18 +271,25 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   };
 
   const changeLevel = (nextLevel: Level) => {
+    if (levelSaving || nextLevel === level) return;
+    const previousLevel = level; const previousPaperId = paperId; const previousTopics = selectedTopicCodes;
     const nextPapers = getPapers(subject, nextLevel);
     const nextPaper = nextPapers.find((item) => item.id === paperId) ?? nextPapers[0];
     const nextTopics = getRelevantTopics(subject, nextLevel, nextPaper);
-    setLevel(nextLevel); setPaperId(nextPaper.id); setSelectedTopicCodes(nextTopics[0] ? [nextTopics[0].code] : []);
+    setLevel(nextLevel); setPaperId(nextPaper.id); setSelectedTopicCodes(nextTopics[0] ? [nextTopics[0].code] : []); setSaveError(""); setLevelSaveStatus("Saving…");
     if (me?.selectedSubjects.includes(subject.id)) {
       const nextLevels = { ...me.subjectLevels, [subject.id]: nextLevel };
       setMe((currentMe) => currentMe ? { ...currentMe, subjectLevels: nextLevels } : currentMe);
-      void apiFetch("/api/profile/subjects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subjects: me.selectedSubjects, subjectLevels: nextLevels }) }).then(async (response) => {
+      setLevelSaving(true);
+      void apiFetch("/api/profile/level", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subjectId: subject.id, level: nextLevel }) }).then(async (response) => {
         if (!response.ok) throw new Error("Could not save the course level.");
-        const saved = await response.json() as { subjectLevels: Record<string, Level> };
+        const saved = await response.json() as { subjectLevels: Record<string, Level>; level: Level };
         setMe((currentMe) => currentMe ? { ...currentMe, subjectLevels: saved.subjectLevels } : currentMe);
-      }).catch(() => setSaveError("The level changed for this test, but could not be saved to your account. Please try again."));
+        setLevelSaveStatus(`${saved.level} saved to your account`);
+      }).catch(() => {
+        setLevel(previousLevel); setPaperId(previousPaperId); setSelectedTopicCodes(previousTopics); setMe((currentMe) => currentMe ? { ...currentMe, subjectLevels: me.subjectLevels } : currentMe);
+        setLevelSaveStatus(""); setSaveError("The course level could not be saved, so it was changed back. Please try again.");
+      }).finally(() => setLevelSaving(false));
     }
   };
 
@@ -344,7 +379,8 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const freeLocked = !me?.premium && (me?.attempts.length ?? 0) >= 1;
 
   if (stage === "loading") return <main className="loading-screen"><BrandLogo/><strong>Loading your learning profile…</strong></main>;
-  if (stage === "signin") return <main className="loading-screen auth-screen"><div className="auth-card"><BrandLogo/><span className="eyebrow">STUDENT ACCOUNT</span><h1>{authMode === "login" ? "Log in" : "Create account"}</h1><p>Use a site username and password to save your subjects, test results and Premium access.</p><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); }}>Log in</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); }}>Sign up</button></div><form className="account-form" onSubmit={submitAuth}><label><span>Username</span><input autoComplete="username" value={authUsername} onChange={(event) => setAuthUsername(event.target.value)} placeholder="Lowercase letters, numbers or underscores" minLength={3} maxLength={24} required/></label><label><span>Password</span><input type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="At least 8 characters" minLength={8} maxLength={128} required/></label>{authMode === "register" && authUsername.trim().toLowerCase() === "justinnamwoo1003" && <label><span>One-time administrator setup code</span><input type="password" autoComplete="off" value={adminSetupCode} onChange={(event) => setAdminSetupCode(event.target.value)} placeholder="Required only for initial admin registration" required/></label>}{authError && <div className="auth-error" role="alert">{authError}</div>}<button className="primary-button" disabled={authBusy}>{authBusy ? "Working…" : authMode === "login" ? "Log in" : "Create account"} <span>→</span></button></form>{authMode === "register" && <small>If the username is already registered, the account will not be created and you will be told immediately.</small>}</div></main>;
+  if (stage === "signin") return <main className="loading-screen auth-screen"><div className="auth-card"><BrandLogo/><span className="eyebrow">{authMode === "reset" ? "ACCOUNT RECOVERY" : "STUDENT ACCOUNT"}</span><h1>{authMode === "login" ? "Log in" : authMode === "register" ? "Create account" : "Reset password"}</h1><p>{authMode === "reset" ? "Enter the recovery code that was issued by this site, then choose a new password." : "Use a site username and password to save your subjects, test results and Premium access."}</p>{authMode !== "reset" && <div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); setAuthNotice(""); }}>Log in</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); setAuthNotice(""); }}>Sign up</button></div>}<form className="account-form" onSubmit={submitAuth}><label><span>Username</span><input autoComplete="username" value={authUsername} onChange={(event) => setAuthUsername(event.target.value)} placeholder="Lowercase letters, numbers or underscores" minLength={3} maxLength={24} required/></label>{authMode === "reset" && <label><span>Recovery code</span><input autoComplete="off" value={authRecoveryCode} onChange={(event) => setAuthRecoveryCode(event.target.value.toUpperCase())} placeholder="XXXXX-XXXXX-XXXXX-XXXXX" required/></label>}<label><span>{authMode === "reset" ? "New password" : "Password"}</span><input type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="At least 8 characters" minLength={8} maxLength={128} required/></label>{authMode === "register" && authUsername.trim().toLowerCase() === "justinnamwoo1003" && <label><span>One-time administrator setup code</span><input type="password" autoComplete="off" value={adminSetupCode} onChange={(event) => setAdminSetupCode(event.target.value)} placeholder="Required only for initial admin registration" required/></label>}{authNotice && <div className="auth-notice" role="status">{authNotice}</div>}{authError && <div className="auth-error" role="alert">{authError}</div>}<button className="primary-button" disabled={authBusy}>{authBusy ? "Working…" : authMode === "login" ? "Log in" : authMode === "register" ? "Create account" : "Reset password"} <span>→</span></button></form>{authMode === "login" && <button type="button" className="forgot-link" onClick={() => { setAuthMode("reset"); setAuthError(""); setAuthNotice(""); setAuthPassword(""); }}>Forgot password?</button>}{authMode === "reset" && <button type="button" className="forgot-link" onClick={() => { setAuthMode("login"); setAuthError(""); setAuthRecoveryCode(""); setAuthPassword(""); }}>← Back to login</button>}{authMode === "register" && <small>You will receive a one-time recovery code after registration. Save it somewhere private.</small>}</div></main>;
+  if (stage === "recovery-code") return <main className="loading-screen auth-screen"><div className="auth-card recovery-card"><BrandLogo/><span className="eyebrow">SAVE THIS ONCE</span><h1>Your recovery code</h1><p>This code is the only self-service way to reset your password. Store it somewhere private; it will not be shown again.</p><code>{issuedRecoveryCode}</code><button className="primary-button" onClick={() => void loadMe()}>I saved the code <span>→</span></button></div></main>;
   if (stage === "onboarding") return <SubjectOnboarding name={me?.user.displayName ?? initialName} current={me?.selectedSubjects ?? []} currentLevels={me?.subjectLevels ?? {}} onSaved={async () => { await loadMe(); }} />;
 
   return <main className="app-shell">
@@ -359,6 +395,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
         <ThemePicker value={theme} onChange={changeTheme}/>
         {me?.user.isAdmin && <a className="admin-link" href={isStaticPages() ? `${SITES_ORIGIN}/admin` : "/admin"}>Admin</a>}
         <span className="account-identity" title={me?.user.email}>{me?.user.email}</span>
+        <button className={`account-link ${stage === "account" ? "active" : ""}`} type="button" onClick={() => { setIssuedRecoveryCode(""); setAuthError(""); setStage("account"); }}>Account</button>
         <button className="signout-link" type="button" onClick={() => void logOut()}>Log out</button>
       </nav>
     </header>
@@ -381,18 +418,19 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     {stage === "reports" && <ReportsView premium={Boolean(me?.premium)} attempts={me?.attempts ?? []} onBack={goHome} />}
     {stage === "status" && <StatusView premium={Boolean(me?.premium)} attempts={me?.attempts ?? []} onBack={goHome} />}
     {stage === "mistakes" && <MistakeBank premium={Boolean(me?.premium)} mistakes={allMistakes} onBack={goHome} />}
+    {stage === "account" && <div className="page-container report-page"><button className="back-link" onClick={goHome}>← Dashboard</button><div className="report-heading"><span className="eyebrow">ACCOUNT SECURITY</span><h1>Password recovery</h1><p>Create a new recovery code while you are signed in. Generating one immediately invalidates the previous code.</p></div><section className="account-security-card"><div><strong>Recovery code</strong><p>Keep it outside this site, such as in a password manager. Anyone with the code and your username can reset your password.</p></div>{issuedRecoveryCode ? <><code>{issuedRecoveryCode}</code><span className="recovery-warning">This is shown once. Save it before leaving this page.</span></> : <button className="primary-button" disabled={authBusy} onClick={() => void generateRecoveryCode()}>{authBusy ? "Creating…" : "Create new recovery code"} <span>→</span></button>}{authError && <div className="auth-error" role="alert">{authError}</div>}</section></div>}
 
     {stage === "setup" && <div className="page-container setup-page" style={{ "--subject": subject.color, "--subject-soft": subject.softColor } as React.CSSProperties}>
-      <button className="back-link" onClick={goHome}>← Dashboard</button>
+      <button className="back-link" disabled={levelSaving} onClick={goHome}>{levelSaving ? "Saving course level…" : "← Dashboard"}</button>
       <div className="setup-heading"><span className="subject-badge large">{subject.shortName}</span><div><span className="eyebrow">PROGRESS-BASED TEST</span><h1>{subject.name}</h1><p>{subject.description}</p></div></div>
-      <SetupBlock number="1" title="Choose course level" subtitle="SL and HL show different topic coverage and papers."><div className="level-switch">{subject.levels.map((item) => <button key={item} className={level === item ? "selected" : ""} onClick={() => changeLevel(item)}><strong>{item}</strong><span>{item === "HL" ? "Core plus HL-only content" : "SL syllabus content only"}</span></button>)}</div></SetupBlock>
+      <SetupBlock number="1" title="Choose course level" subtitle="SL and HL show different topic coverage and papers."><div className="level-switch">{subject.levels.map((item) => <button key={item} disabled={levelSaving} className={level === item ? "selected" : ""} onClick={() => changeLevel(item)}><strong>{item}</strong><span>{item === "HL" ? "Core plus HL-only content" : "SL syllabus content only"}</span></button>)}</div>{levelSaveStatus && <div className={`level-save-status ${levelSaving ? "saving" : "saved"}`}><i/>{levelSaveStatus}</div>}</SetupBlock>
       <SetupBlock number="2" title="Choose the paper" subtitle="Question structure follows the selected assessment style."><div className="paper-grid">{papers.map((item) => <button key={item.id} className={`paper-card ${paper.id === item.id ? "selected" : ""}`} onClick={() => changePaper(item.id)}><span className="radio-dot"/><strong>{item.name}</strong><p>{item.description}</p><small>{item.format}</small></button>)}</div>{subject.id === "cs" && paper.id === "p2" && <div className="code-language"><div><strong>Programming language</strong><span>IB Paper 2 provides equivalent Python and Java versions.</span></div><div><button className={codeLanguage === "python" ? "selected" : ""} onClick={() => setCodeLanguage("python")}>Python</button><button className={codeLanguage === "java" ? "selected" : ""} onClick={() => setCodeLanguage("java")}>Java</button></div></div>}</SetupBlock>
       <SetupBlock number="3" title="Select exactly what you want to test" subtitle={singleTopicPaper ? "This is an essay-heavy paper, so choose one topic for a realistic focused response within 60 minutes." : `Choose individual topics. This paper supports up to ${topicLimit} topics while preserving a one-hour maximum.`} side={`${includedTopics.length}/${topicLimit} topics`}><div className="topic-list">{topics.map((topic, index) => { const included = selectedTopicCodes.includes(topic.code); return <button type="button" key={topic.code} className={`topic-row ${included ? "included" : ""}`} onClick={() => chooseTopic(topic.code, index)}><span className="topic-check">{included ? "✓" : ""}</span><strong>{topic.code}</strong><span>{topic.title}</span>{topic.level === "HL" && <b>HL only</b>}</button>; })}</div><div className="coverage-note"><strong>{singleTopicPaper ? "Focused essay policy" : "Smart coverage policy"}</strong><span>{singleTopicPaper ? "The selected topic receives one complete IB-style task instead of several rushed essays." : "The adaptive sequence rotates through least-used selected topics first, then adjusts difficulty."}</span></div></SetupBlock>
       <SetupBlock number="4" title="Choose test mode" subtitle="Monthly Progress Test is timed and compares results with your previous month."><div className="tier-grid">
         <button className={`tier-card ${testMode === "diagnostic" ? "selected" : ""}`} onClick={() => setTestMode("diagnostic")}><span className="tier-top"><strong>{me?.premium ? "Deep diagnostic" : "Quick diagnostic"}</strong><em>{me?.premium ? "PREMIUM" : "FREE"}</em></span><p>Paper-aware question budget · timed for 15–60 minutes</p><ul><li>Paper-specific question types</li><li>Every selected topic is prioritized before repeats</li><li>Estimated grade and answer review</li></ul></button>
         <button className={`tier-card premium ${testMode === "monthly" ? "selected" : ""} ${!me?.premium ? "locked" : ""}`} disabled={!me?.premium} onClick={() => me?.premium && setTestMode("monthly")}><span className="popular">MONTHLY CHECK-IN</span><span className="tier-top"><strong>Monthly Progress Test</strong><em>PREMIUM</em></span><p>Paper-aware adaptive test · maximum 60-minute timer</p><ul><li>Previous-test comparison</li><li>Topic gains and remaining gaps</li><li>Speed and score change</li></ul></button>
       </div></SetupBlock>
-      {saveError && <div className="inline-error">{saveError}</div>}<div className="start-panel"><div><strong>{subject.name} {level} · {paper.name}</strong><span>{includedTopics.length} topics · {paper.id === "concept" ? "timed adaptive concept MCQ" : testMode === "monthly" ? "timed monthly progress test" : "timed adaptive diagnostic"} · maximum 60 minutes</span></div><button className="primary-button" disabled={!includedTopics.length || freeLocked} onClick={startTest}>{freeLocked ? "Free test already used" : `Start ${testMode === "monthly" ? "monthly test" : "diagnostic"}`} <span>→</span></button></div>
+      {saveError && <div className="inline-error">{saveError}</div>}<div className="start-panel"><div><strong>{subject.name} {level} · {paper.name}</strong><span>{includedTopics.length} topics · {paper.id === "concept" ? "timed adaptive concept MCQ" : testMode === "monthly" ? "timed monthly progress test" : "timed adaptive diagnostic"} · maximum 60 minutes</span></div><button className="primary-button" disabled={!includedTopics.length || freeLocked || levelSaving} onClick={startTest}>{levelSaving ? "Saving level…" : freeLocked ? "Free test already used" : `Start ${testMode === "monthly" ? "monthly test" : "diagnostic"}`} <span>→</span></button></div>
     </div>}
 
     {stage === "test" && questions[current] && <div className="test-layout" style={{ "--subject": subject.color, "--subject-soft": subject.softColor } as React.CSSProperties}>
