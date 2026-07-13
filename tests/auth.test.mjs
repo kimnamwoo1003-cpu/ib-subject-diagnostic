@@ -19,8 +19,8 @@ test("account credentials are normalized and validated", () => {
 });
 
 test("password records verify the right password without storing plaintext", async () => {
-  const record = await createPasswordRecord("securepass123");
+  const record = await createPasswordRecord("securepass123", "test-only-pepper");
   assert.notEqual(record.passwordHash, "securepass123");
-  assert.equal(await verifyPassword("securepass123", record.passwordSalt, record.passwordHash), true);
-  assert.equal(await verifyPassword("wrongpass123", record.passwordSalt, record.passwordHash), false);
+  assert.equal(await verifyPassword("securepass123", record.passwordSalt, record.passwordHash, "test-only-pepper"), true);
+  assert.equal(await verifyPassword("wrongpass123", record.passwordSalt, record.passwordHash, "test-only-pepper"), false);
 });
