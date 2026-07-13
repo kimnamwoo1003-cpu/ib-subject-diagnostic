@@ -25,6 +25,8 @@ export async function ensureSchema() {
       username text PRIMARY KEY NOT NULL,
       password_hash text NOT NULL,
       password_salt text NOT NULL,
+      recovery_hash text,
+      recovery_salt text,
       created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
     )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS sessions (
@@ -66,6 +68,8 @@ export async function ensureSchema() {
     env.DB.prepare("CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions (expires_at)"),
   ]);
   for (const statement of [
+    "ALTER TABLE accounts ADD COLUMN recovery_hash text",
+    "ALTER TABLE accounts ADD COLUMN recovery_salt text",
     "ALTER TABLE profiles ADD COLUMN subject_levels text DEFAULT '{}' NOT NULL",
     "ALTER TABLE test_attempts ADD COLUMN criteria_breakdown text DEFAULT '[]' NOT NULL",
     "ALTER TABLE test_attempts ADD COLUMN question_ids text DEFAULT '[]' NOT NULL",
