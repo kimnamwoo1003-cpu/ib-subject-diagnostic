@@ -37,6 +37,27 @@ const normalize = (value: string) => value.toLocaleLowerCase().replace(/[–—]
 const formatTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 const formatDuration = (seconds: number) => seconds ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : "—";
 
+type ThemeName = "blue" | "teal" | "violet" | "rose" | "orange" | "slate";
+const themes: Record<ThemeName, { name: string; blue: string; navy: string; soft: string; line: string; rgb: string }> = {
+  blue: { name: "Blue", blue: "#155eef", navy: "#0b2d6b", soft: "#eaf2ff", line: "#d9e5f5", rgb: "21,94,239" },
+  teal: { name: "Teal", blue: "#087f75", navy: "#074f4a", soft: "#e5f7f4", line: "#cfe8e4", rgb: "8,127,117" },
+  violet: { name: "Violet", blue: "#7357d9", navy: "#3d2d7a", soft: "#f0ecff", line: "#dfd8f5", rgb: "115,87,217" },
+  rose: { name: "Rose", blue: "#c7446b", navy: "#762640", soft: "#fdeaf0", line: "#f0d5de", rgb: "199,68,107" },
+  orange: { name: "Orange", blue: "#c76319", navy: "#74380d", soft: "#fff0e4", line: "#f1ddce", rgb: "199,99,25" },
+  slate: { name: "Slate", blue: "#42617d", navy: "#21394f", soft: "#eaf0f5", line: "#d7e0e7", rgb: "66,97,125" },
+};
+
+function applyTheme(name: ThemeName) {
+  const theme = themes[name]; const root = document.documentElement;
+  root.style.setProperty("--blue", theme.blue); root.style.setProperty("--navy", theme.navy);
+  root.style.setProperty("--subject", theme.blue); root.style.setProperty("--subject-soft", theme.soft);
+  root.style.setProperty("--wash", theme.soft); root.style.setProperty("--line", theme.line); root.style.setProperty("--theme-rgb", theme.rgb);
+}
+
+function ThemePicker({ value, onChange }: { value: ThemeName; onChange: (theme: ThemeName) => void }) {
+  return <details className="theme-picker"><summary aria-label="Choose site theme color" title="Theme color"/><div className="theme-menu">{(Object.entries(themes) as Array<[ThemeName, (typeof themes)[ThemeName]]>).map(([key, theme]) => <button type="button" key={key} className={value === key ? "active" : ""} aria-label={`${theme.name} theme`} title={theme.name} style={{ "--swatch": theme.blue } as React.CSSProperties} onClick={(event) => { onChange(key); (event.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open"); }}><i/></button>)}</div></details>;
+}
+
 function scoreQuestion(question: Question, answer: string) {
   if (!answer) return 0;
   if (question.responseType === "mcq") return Number(answer) === question.correctIndex ? question.marks : 0;
@@ -115,6 +136,16 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const [plannedMinutes, setPlannedMinutes] = useState(60);
   const [savedResult, setSavedResult] = useState<{ percent: number; grade: number; comparison: Attempt | null; durationSeconds: number } | null>(null);
   const [saveError, setSaveError] = useState("");
+  const [theme, setTheme] = useState<ThemeName>("blue");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("ibsd-theme") as ThemeName | null;
+    const next = saved && themes[saved] ? saved : "blue";
+    const frame = window.requestAnimationFrame(() => { setTheme(next); applyTheme(next); });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  const changeTheme = (next: ThemeName) => { setTheme(next); applyTheme(next); localStorage.setItem("ibsd-theme", next); };
 
   const loadMe = async (nextStage = true) => {
     const response = await apiFetch("/api/me", { cache: "no-store" });
@@ -216,6 +247,15 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     const nextPaper = nextPapers.find((item) => item.id === paperId) ?? nextPapers[0];
     const nextTopics = getRelevantTopics(subject, nextLevel, nextPaper);
     setLevel(nextLevel); setPaperId(nextPaper.id); setSelectedTopicCodes(nextTopics[0] ? [nextTopics[0].code] : []);
+    if (me?.selectedSubjects.includes(subject.id)) {
+      const nextLevels = { ...me.subjectLevels, [subject.id]: nextLevel };
+      setMe((currentMe) => currentMe ? { ...currentMe, subjectLevels: nextLevels } : currentMe);
+      void apiFetch("/api/profile/subjects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subjects: me.selectedSubjects, subjectLevels: nextLevels }) }).then(async (response) => {
+        if (!response.ok) throw new Error("Could not save the course level.");
+        const saved = await response.json() as { subjectLevels: Record<string, Level> };
+        setMe((currentMe) => currentMe ? { ...currentMe, subjectLevels: saved.subjectLevels } : currentMe);
+      }).catch(() => setSaveError("The level changed for this test, but could not be saved to your account. Please try again."));
+    }
   };
 
   const changePaper = (nextPaperId: string) => {
@@ -316,6 +356,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
         {me?.premium && <button className={`nav-link ${stage === "status" ? "active" : ""}`} onClick={() => setStage("status")}>Current status</button>}
         <button className={`nav-link ${stage === "mistakes" ? "active" : ""}`} onClick={() => setStage("mistakes")}>Mistake bank</button>
         {me?.premium && <span className="premium-access">★ Premium Access</span>}
+        <ThemePicker value={theme} onChange={changeTheme}/>
         {me?.user.isAdmin && <a className="admin-link" href={isStaticPages() ? `${SITES_ORIGIN}/admin` : "/admin"}>Admin</a>}
         <span className="account-identity" title={me?.user.email}>{me?.user.email}</span>
         <button className="signout-link" type="button" onClick={() => void logOut()}>Log out</button>
@@ -472,12 +513,19 @@ function DiagramPad({ value, onChange }: { value: string; onChange: (value: stri
 
 function QuestionVisual({ type, data }: { type: NonNullable<Question["visual"]>; data?: Question["visualData"] }) {
   const label = type === "motion-graph" ? "velocity / m s⁻¹" : type === "function-graph" ? "f(x)" : type === "data-graph" ? "measured value" : "Figure 1";
+  if (type === "data-table" && data?.columns?.length && data.rows?.length) return <figure className="question-visual stimulus-table"><figcaption>{data.title ?? "Table 1: stimulus data"}</figcaption><div className="table-scroll"><table><thead><tr><th scope="col">Period / group</th>{data.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{data.rows.map((row) => <tr key={row.label}><th scope="row">{row.label}</th>{row.values.map((value, index) => <td key={`${row.label}-${index}`}>{value}</td>)}</tr>)}</tbody></table></div>{data.note && <p>{data.note}</p>}</figure>;
+  if (type === "bar-chart" && data?.categories?.length && data.y?.length === data.categories.length) {
+    const values = data.y; const min = Math.min(0, ...values); const max = Math.max(0, ...values); const span = Math.max(max - min, 1); const zeroY = 205 - ((0 - min) / span) * 150; const barWidth = Math.min(70, 390 / values.length); const gap = 500 / values.length;
+    return <figure className="question-visual"><figcaption>{data.title ?? "Figure 1: stimulus data"}</figcaption><svg viewBox="0 0 640 285" role="img" aria-label={`${data.yLabel ?? "Value"} bar chart`}><path className="axis" d={`M70 35V205M70 ${zeroY}H610`}/>{values.map((value, index) => { const height = Math.abs(value) / span * 150; const x = 90 + index * gap + (gap - barWidth) / 2; const y = value >= 0 ? zeroY - height : zeroY; return <g key={`${data.categories?.[index]}-${index}`}><rect className="bar" x={x} y={y} width={barWidth} height={Math.max(height, 2)} rx="5"/><text className="bar-value" x={x + barWidth / 2} y={value >= 0 ? y - 8 : y + height + 15}>{value}{data.yLabel?.includes("%") ? "%" : ""}</text><text className="bar-label" x={x + barWidth / 2} y="232">{data.categories?.[index]}</text></g>; })}<text className="axis-label y" x="16" y="26">{data.yLabel ?? "Value"}</text></svg>{data.note && <p>{data.note}</p>}</figure>;
+  }
+  if (type === "geo-map") return <figure className="question-visual"><figcaption>{data?.title ?? "Figure 1: spatial pattern"}</figcaption><svg viewBox="0 0 640 300" role="img" aria-label="Schematic choropleth map showing a transport corridor, urban core, rural periphery and hazard-exposed districts"><path className="region low" d="M55 42L260 28L305 120L230 270L55 230Z"/><path className="region medium" d="M260 28L520 48L590 210L395 270L305 120Z"/><path className="region high" d="M205 92L360 70L455 142L355 220L230 185Z"/><path className="corridor" d="M75 238C190 194 270 155 365 112S505 70 570 58"/><path className="hazard" d="M82 62L190 50L207 125L105 145Z M455 176L565 165L580 228L482 246Z"/><circle cx="325" cy="145" r="10"/><text x="325" y="170">Urban core</text><text x="130" y="205">Rural periphery</text><text x="478" y="92">Transport corridor</text><g className="map-key"><rect x="75" y="270" width="18" height="12" className="key-low"/><text x="125" y="280">Lower</text><rect x="185" y="270" width="18" height="12" className="key-medium"/><text x="240" y="280">Medium</text><rect x="300" y="270" width="18" height="12" className="key-high"/><text x="345" y="280">Higher</text><rect x="420" y="270" width="18" height="12" className="key-hazard"/><text x="505" y="280">Hazard-exposed</text></g></svg>{data?.rows?.length && <div className="mini-data-row">{data.rows.map((row) => <span key={row.label}><strong>{row.label}</strong>{row.values.join(" → ")}</span>)}</div>}{data?.note && <p>{data.note}</p>}</figure>;
+  if (type === "process-flow" && data?.nodes?.length) return <figure className="question-visual process-visual"><figcaption>{data.title ?? "Figure 1: process flow"}</figcaption><div className="process-nodes">{data.nodes.map((node, index) => <div key={`${node}-${index}`}><span>{index + 1}</span><strong>{node}</strong>{index < (data.nodes?.length ?? 0) - 1 && <i aria-hidden="true">→</i>}</div>)}</div>{data.note && <p>{data.note}</p>}</figure>;
   if (type === "network") return <figure className="question-visual"><figcaption>Figure 1: network topology</figcaption><svg viewBox="0 0 640 220" role="img" aria-label="Network containing a router, switch, server and three clients"><rect x="275" y="18" width="90" height="44" rx="8"/><text x="320" y="45">Router</text><rect x="275" y="92" width="90" height="44" rx="8"/><text x="320" y="119">Switch</text><rect x="60" y="164" width="100" height="40" rx="8"/><text x="110" y="189">Client A</text><rect x="270" y="164" width="100" height="40" rx="8"/><text x="320" y="189">Server</text><rect x="480" y="164" width="100" height="40" rx="8"/><text x="530" y="189">Client B</text><path d="M320 62V92M300 136L110 164M320 136V164M340 136L530 164"/></svg></figure>;
   if (type === "logic") return <figure className="question-visual"><figcaption>Figure 1: logic circuit</figcaption><svg viewBox="0 0 640 210" role="img" aria-label="Two inputs pass through an AND gate, followed by a NOT gate"><text x="35" y="68">A</text><text x="35" y="145">B</text><path d="M55 62H210M55 139H210M210 35H285A55 55 0 0 1 285 165H210Z M340 100H445M445 60L535 100L445 140Z M535 100H595"/><circle cx="548" cy="100" r="12"/><text x="605" y="106">Q</text><text x="243" y="106">AND</text><text x="466" y="106">NOT</text></svg></figure>;
   if (type === "erd") return <figure className="question-visual"><figcaption>Figure 1: entity–relationship diagram</figcaption><svg viewBox="0 0 640 230" role="img" aria-label="Student and Course entities connected through Enrollment"><rect x="25" y="45" width="150" height="120" rx="8"/><text x="100" y="73">STUDENT</text><text x="45" y="105">PK student_id</text><text x="45" y="135">name</text><rect x="245" y="70" width="150" height="80" rx="8"/><text x="320" y="98">ENROLLMENT</text><text x="265" y="130">grade</text><rect x="465" y="45" width="150" height="120" rx="8"/><text x="540" y="73">COURSE</text><text x="485" y="105">PK course_id</text><text x="485" y="135">title</text><path d="M175 105H245M395 105H465"/><text x="197" y="96">1:M</text><text x="414" y="96">M:1</text></svg></figure>;
   if (type === "circuit") return <figure className="question-visual"><figcaption>Figure 1: electrical circuit</figcaption><svg viewBox="0 0 640 220" role="img" aria-label="Cell connected to two parallel resistors and an ammeter"><path d="M90 55H290M350 55H545V180H90V55M290 30V80M315 20V90M350 55H315M200 55V105H440V55M200 105V150H440V105"/><rect x="270" y="91" width="100" height="28"/><text x="320" y="111">R₁ = 6 Ω</text><rect x="270" y="136" width="100" height="28"/><text x="320" y="156">R₂ = 3 Ω</text><circle cx="510" cy="180" r="25"/><text x="510" y="187">A</text></svg></figure>;
   if (type === "wave") return <figure className="question-visual"><figcaption>Figure 1: wave at one instant</figcaption><svg viewBox="0 0 640 230" role="img" aria-label="Sinusoidal wave with displacement and distance axes"><path className="axis" d="M55 190V25M55 110H610"/><path className="plot" d="M55 110C95 25 135 25 175 110S255 195 295 110S375 25 415 110S495 195 535 110S595 45 610 70"/><text x="15" y="25">y</text><text x="590" y="136">x / m</text><path d="M95 48H375M95 42V54M375 42V54"/><text x="227" y="38">λ</text></svg></figure>;
-  if (type === "data-graph" && data?.x.length && data.y.length === data.x.length) {
+  if (type === "data-graph" && data?.x?.length && data.y?.length === data.x.length) {
     const minX = Math.min(...data.x); const maxX = Math.max(...data.x); const minY = Math.min(...data.y); const maxY = Math.max(...data.y);
     const xPad = Math.max((maxX - minX) * .12, .01); const yPad = Math.max((maxY - minY) * .18, data.uncertainty ?? .01);
     const sx = (value: number) => 72 + ((value - (minX - xPad)) / ((maxX + xPad) - (minX - xPad))) * 520;
