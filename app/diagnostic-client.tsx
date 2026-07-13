@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { buildQuestionPool, getAssessmentCriteria, getPapers, getRelevantTopics, Level, Question, subjectCatalog, subjects } from "./data";
 import { BrandLockup, BrandLogo } from "./logo";
 
@@ -79,6 +79,12 @@ function scoreCriterion(question: Question, answer: string, criterion: { name: s
 
 export default function DiagnosticClient({ initialName }: { initialName: string }) {
   const [stage, setStage] = useState<Stage>("loading");
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authUsername, setAuthUsername] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [adminSetupCode, setAdminSetupCode] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
   const [me, setMe] = useState<MeData | null>(null);
   const [subjectId, setSubjectId] = useState(subjects[0].id);
   const [level, setLevel] = useState<Level>("HL");
@@ -113,6 +119,28 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     setMe(data);
     if (nextStage) setStage(data.selectedSubjects.length === 6 ? "home" : "onboarding");
     return data;
+  };
+
+  const submitAuth = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAuthBusy(true); setAuthError("");
+    try {
+      const response = await fetch(`/api/auth/${authMode === "login" ? "login" : "register"}`, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username: authUsername, password: authPassword, adminCode: adminSetupCode }),
+      });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) { setAuthError(data.error ?? "요청을 완료하지 못했습니다."); return; }
+      setAuthPassword(""); setAdminSetupCode("");
+      await loadMe();
+    } catch { setAuthError("서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."); }
+    finally { setAuthBusy(false); }
+  };
+
+  const logOut = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    setMe(null); setAuthPassword(""); setAuthError(""); setStage("signin");
+    window.scrollTo({ top: 0 });
   };
 
   useEffect(() => {
@@ -269,7 +297,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const freeLocked = !me?.premium && (me?.attempts.length ?? 0) >= 1;
 
   if (stage === "loading") return <main className="loading-screen"><BrandLogo/><strong>Loading your learning profile…</strong></main>;
-  if (stage === "signin") return <main className="loading-screen auth-screen"><BrandLogo/><h1>Log in or create your account</h1><p>Your subjects, one-time free test, Premium access and progress history are saved to your account.</p><div className="auth-actions"><a className="primary-button" href="/signin-with-chatgpt?return_to=%2F">Log in <span>→</span></a><a className="secondary-button" href="/signin-with-chatgpt?return_to=%2F">Sign up</a></div><small>First-time sign-in automatically creates a student account.</small></main>;
+  if (stage === "signin") return <main className="loading-screen auth-screen"><div className="auth-card"><BrandLogo/><span className="eyebrow">STUDENT ACCOUNT</span><h1>{authMode === "login" ? "로그인" : "회원가입"}</h1><p>사이트 계정 이름과 비밀번호로 진도, 시험 결과와 Premium 권한을 저장합니다.</p><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); }}>로그인</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); }}>회원가입</button></div><form className="account-form" onSubmit={submitAuth}><label><span>계정 이름</span><input autoComplete="username" value={authUsername} onChange={(event) => setAuthUsername(event.target.value)} placeholder="영문 소문자, 숫자, 밑줄" minLength={3} maxLength={24} required/></label><label><span>비밀번호</span><input type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="8자 이상" minLength={8} maxLength={128} required/></label>{authMode === "register" && authUsername.trim().toLowerCase() === "justinnamwoo1003" && <label><span>관리자 1회용 등록 코드</span><input type="password" autoComplete="off" value={adminSetupCode} onChange={(event) => setAdminSetupCode(event.target.value)} placeholder="관리자 계정 최초 등록에만 필요" required/></label>}{authError && <div className="auth-error" role="alert">{authError}</div>}<button className="primary-button" disabled={authBusy}>{authBusy ? "처리 중…" : authMode === "login" ? "로그인" : "계정 만들기"} <span>→</span></button></form>{authMode === "register" && <small>계정 이름이 이미 사용 중이면 가입되지 않으며 즉시 알려드립니다.</small>}</div></main>;
   if (stage === "onboarding") return <SubjectOnboarding name={me?.user.displayName ?? initialName} current={me?.selectedSubjects ?? []} onSaved={async () => { await loadMe(); }} />;
 
   return <main className="app-shell">
@@ -282,6 +310,8 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
         <button className={`nav-link ${stage === "mistakes" ? "active" : ""}`} onClick={() => setStage("mistakes")}>Mistake bank</button>
         {me?.premium && <span className="premium-access">★ Premium Access</span>}
         {me?.user.isAdmin && <a className="admin-link" href="/admin">Admin</a>}
+        <span className="account-identity" title={me?.user.email}>{me?.user.email}</span>
+        {!isStaticPages() && <button className="signout-link" type="button" onClick={() => void logOut()}>Log out</button>}
       </nav>
     </header>
 
