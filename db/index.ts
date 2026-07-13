@@ -21,6 +21,18 @@ export async function ensureSchema() {
   const env = await getRuntimeEnv();
   if (!env.DB) throw new Error("Cloudflare D1 binding `DB` is unavailable.");
   await env.DB.batch([
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS accounts (
+      username text PRIMARY KEY NOT NULL,
+      password_hash text NOT NULL,
+      password_salt text NOT NULL,
+      created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS sessions (
+      token_hash text PRIMARY KEY NOT NULL,
+      username text NOT NULL,
+      expires_at text NOT NULL,
+      created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS profiles (
       email text PRIMARY KEY NOT NULL,
       display_name text NOT NULL,
@@ -49,6 +61,8 @@ export async function ensureSchema() {
       created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
     )`),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS attempts_user_date_idx ON test_attempts (user_email, created_at)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS sessions_username_idx ON sessions (username)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions (expires_at)"),
   ]);
   for (const statement of [
     "ALTER TABLE test_attempts ADD COLUMN criteria_breakdown text DEFAULT '[]' NOT NULL",
