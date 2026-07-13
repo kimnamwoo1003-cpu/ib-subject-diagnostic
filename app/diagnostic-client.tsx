@@ -22,6 +22,15 @@ type MeData = {
   attempts: Attempt[];
 };
 
+const SITES_ORIGIN = "https://ib-subject-diagnostic.justinamwoo.chatgpt.site";
+const isStaticPages = () => typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
+const apiFetch = (path: string, init: RequestInit = {}) => {
+  const token = typeof window !== "undefined" ? localStorage.getItem("ibsd-session-token") : null;
+  const headers = new Headers(init.headers);
+  if (token) headers.set("authorization", `Bearer ${token}`);
+  return fetch(`${isStaticPages() ? SITES_ORIGIN : ""}${path}`, { ...init, headers });
+};
+
 const gradeFromPercent = (percent: number) => percent >= 84 ? 7 : percent >= 72 ? 6 : percent >= 60 ? 5 : percent >= 48 ? 4 : percent >= 36 ? 3 : percent >= 22 ? 2 : 1;
 const normalize = (value: string) => value.toLocaleLowerCase().replace(/[–—]/g, "-").replace(/[^\p{L}\p{N}\s-]/gu, " ");
 const formatTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -105,15 +114,8 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const [savedResult, setSavedResult] = useState<{ percent: number; grade: number; comparison: Attempt | null; durationSeconds: number } | null>(null);
   const [saveError, setSaveError] = useState("");
 
-  const staticProfile = () => {
-    const fallback: MeData = { user: { email: "local@github.pages", displayName: initialName, isAdmin: false }, premium: false, selectedSubjects: [], attempts: [] };
-    try { return { ...fallback, ...JSON.parse(localStorage.getItem("ib-subject-diagnostic-profile") ?? "{}") } as MeData; } catch { return fallback; }
-  };
-  const isStaticPages = () => typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
-
   const loadMe = async (nextStage = true) => {
-    if (isStaticPages()) { const data = staticProfile(); setMe(data); if (nextStage) setStage(data.selectedSubjects.length === 6 ? "home" : "onboarding"); return data; }
-    const response = await fetch("/api/me", { cache: "no-store" });
+    const response = await apiFetch("/api/me", { cache: "no-store" });
     if (!response.ok) throw new Error("Could not load your account.");
     const data = await response.json() as MeData;
     setMe(data);
@@ -125,28 +127,29 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     event.preventDefault();
     setAuthBusy(true); setAuthError("");
     try {
-      const response = await fetch(`/api/auth/${authMode === "login" ? "login" : "register"}`, {
+      const response = await apiFetch(`/api/auth/${authMode === "login" ? "login" : "register"}`, {
         method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify({ username: authUsername, password: authPassword, adminCode: adminSetupCode }),
       });
-      const data = await response.json() as { error?: string };
-      if (!response.ok) { setAuthError(data.error ?? "요청을 완료하지 못했습니다."); return; }
+      const data = await response.json() as { error?: string; token?: string };
+      if (!response.ok) { setAuthError(data.error ?? "Could not complete the request."); return; }
+      if (isStaticPages() && data.token) localStorage.setItem("ibsd-session-token", data.token);
       setAuthPassword(""); setAdminSetupCode("");
       await loadMe();
-    } catch { setAuthError("서버에 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."); }
+    } catch { setAuthError("Could not reach the server. Please try again shortly."); }
     finally { setAuthBusy(false); }
   };
 
   const logOut = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    await apiFetch("/api/auth/logout", { method: "POST" });
+    localStorage.removeItem("ibsd-session-token");
     setMe(null); setAuthPassword(""); setAuthError(""); setStage("signin");
     window.scrollTo({ top: 0 });
   };
 
   useEffect(() => {
     let active = true;
-    if (isStaticPages()) { const data = staticProfile(); setMe(data); setStage(data.selectedSubjects.length === 6 ? "home" : "onboarding"); return () => { active = false; }; }
-    fetch("/api/me", { cache: "no-store" }).then(async (response) => {
+    apiFetch("/api/me", { cache: "no-store" }).then(async (response) => {
       if (response.status === 401) return null;
       if (!response.ok) throw new Error("Account unavailable");
       return response.json() as Promise<MeData>;
@@ -263,13 +266,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     const durationSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
     setSavedResult({ percent: result.percent, grade: result.grade, comparison, durationSeconds });
     setStage("result"); window.scrollTo({ top: 0 });
-    if (isStaticPages()) {
-      const profile = staticProfile();
-      const attempt = { id: Date.now(), subjectId: subject.id, subjectName: subject.name, level, paperId: paper.id, paperName: paper.name, mode: testMode, percent: result.percent, grade: result.grade, durationSeconds, topicBreakdown, criteriaBreakdown, questionIds: questions.map((question) => question.id), difficultyTrail, mistakes, createdAt: new Date().toISOString() } as Attempt;
-      const updated = { ...profile, attempts: [attempt, ...profile.attempts] };
-      localStorage.setItem("ib-subject-diagnostic-profile", JSON.stringify(updated)); setMe(updated); return;
-    }
-    const response = await fetch("/api/attempts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+    const response = await apiFetch("/api/attempts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
       subjectId: subject.id, subjectName: subject.name, level, paperId: paper.id, paperName: paper.name, mode: testMode,
       percent: result.percent, grade: result.grade, durationSeconds, topicBreakdown, criteriaBreakdown, questionIds: questions.map((question) => question.id), difficultyTrail, mistakes,
     }) });
@@ -297,7 +294,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const freeLocked = !me?.premium && (me?.attempts.length ?? 0) >= 1;
 
   if (stage === "loading") return <main className="loading-screen"><BrandLogo/><strong>Loading your learning profile…</strong></main>;
-  if (stage === "signin") return <main className="loading-screen auth-screen"><div className="auth-card"><BrandLogo/><span className="eyebrow">STUDENT ACCOUNT</span><h1>{authMode === "login" ? "로그인" : "회원가입"}</h1><p>사이트 계정 이름과 비밀번호로 진도, 시험 결과와 Premium 권한을 저장합니다.</p><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); }}>로그인</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); }}>회원가입</button></div><form className="account-form" onSubmit={submitAuth}><label><span>계정 이름</span><input autoComplete="username" value={authUsername} onChange={(event) => setAuthUsername(event.target.value)} placeholder="영문 소문자, 숫자, 밑줄" minLength={3} maxLength={24} required/></label><label><span>비밀번호</span><input type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="8자 이상" minLength={8} maxLength={128} required/></label>{authMode === "register" && authUsername.trim().toLowerCase() === "justinnamwoo1003" && <label><span>관리자 1회용 등록 코드</span><input type="password" autoComplete="off" value={adminSetupCode} onChange={(event) => setAdminSetupCode(event.target.value)} placeholder="관리자 계정 최초 등록에만 필요" required/></label>}{authError && <div className="auth-error" role="alert">{authError}</div>}<button className="primary-button" disabled={authBusy}>{authBusy ? "처리 중…" : authMode === "login" ? "로그인" : "계정 만들기"} <span>→</span></button></form>{authMode === "register" && <small>계정 이름이 이미 사용 중이면 가입되지 않으며 즉시 알려드립니다.</small>}</div></main>;
+  if (stage === "signin") return <main className="loading-screen auth-screen"><div className="auth-card"><BrandLogo/><span className="eyebrow">STUDENT ACCOUNT</span><h1>{authMode === "login" ? "Log in" : "Create account"}</h1><p>Use a site username and password to save your subjects, test results and Premium access.</p><div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); }}>Log in</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); }}>Sign up</button></div><form className="account-form" onSubmit={submitAuth}><label><span>Username</span><input autoComplete="username" value={authUsername} onChange={(event) => setAuthUsername(event.target.value)} placeholder="Lowercase letters, numbers or underscores" minLength={3} maxLength={24} required/></label><label><span>Password</span><input type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="At least 8 characters" minLength={8} maxLength={128} required/></label>{authMode === "register" && authUsername.trim().toLowerCase() === "justinnamwoo1003" && <label><span>One-time administrator setup code</span><input type="password" autoComplete="off" value={adminSetupCode} onChange={(event) => setAdminSetupCode(event.target.value)} placeholder="Required only for initial admin registration" required/></label>}{authError && <div className="auth-error" role="alert">{authError}</div>}<button className="primary-button" disabled={authBusy}>{authBusy ? "Working…" : authMode === "login" ? "Log in" : "Create account"} <span>→</span></button></form>{authMode === "register" && <small>If the username is already registered, the account will not be created and you will be told immediately.</small>}</div></main>;
   if (stage === "onboarding") return <SubjectOnboarding name={me?.user.displayName ?? initialName} current={me?.selectedSubjects ?? []} onSaved={async () => { await loadMe(); }} />;
 
   return <main className="app-shell">
@@ -309,9 +306,9 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
         {me?.premium && <button className={`nav-link ${stage === "status" ? "active" : ""}`} onClick={() => setStage("status")}>Current status</button>}
         <button className={`nav-link ${stage === "mistakes" ? "active" : ""}`} onClick={() => setStage("mistakes")}>Mistake bank</button>
         {me?.premium && <span className="premium-access">★ Premium Access</span>}
-        {me?.user.isAdmin && <a className="admin-link" href="/admin">Admin</a>}
+        {me?.user.isAdmin && <a className="admin-link" href={isStaticPages() ? `${SITES_ORIGIN}/admin` : "/admin"}>Admin</a>}
         <span className="account-identity" title={me?.user.email}>{me?.user.email}</span>
-        {!isStaticPages() && <button className="signout-link" type="button" onClick={() => void logOut()}>Log out</button>}
+        <button className="signout-link" type="button" onClick={() => void logOut()}>Log out</button>
       </nav>
     </header>
 
@@ -371,7 +368,7 @@ function SubjectOnboarding({ name, current, onSaved }: { name: string; current: 
   const [pendingSubject, setPendingSubject] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const groups = Array.from(new Set(subjectCatalog.map((subject) => subject.group)));
-  const save = async () => { setSaving(true); if (window.location.hostname.endsWith("github.io")) { let profile: Record<string, unknown> = {}; try { profile = JSON.parse(localStorage.getItem("ib-subject-diagnostic-profile") ?? "{}"); } catch { /* use empty profile */ } localStorage.setItem("ib-subject-diagnostic-profile", JSON.stringify({ ...profile, selectedSubjects: selected })); await onSaved(); setSaving(false); return; } const response = await fetch("/api/profile/subjects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subjects: selected }) }); if (response.ok) await onSaved(); setSaving(false); };
+  const save = async () => { setSaving(true); const response = await apiFetch("/api/profile/subjects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subjects: selected }) }); if (response.ok) await onSaved(); setSaving(false); };
   const replaceSubject = (oldId: string) => { if (!pendingSubject) return; setSelected((items) => items.map((id) => id === oldId ? pendingSubject : id)); setPendingSubject(null); };
   return <main className="onboarding-page"><div className="onboarding-header"><BrandLogo/><div><span className="eyebrow">SET UP YOUR DASHBOARD</span><h1>Choose your six IB subjects, {name}.</h1><p>Click a selected subject to remove it. If six are already selected, clicking a new subject opens a clear replacement choice.</p></div><div className="selection-counter"><strong>{selected.length}/6</strong><span>selected</span></div></div><div className="catalog-groups">{groups.map((group) => <section key={group}><h2>{group}</h2><div className="catalog-grid">{subjectCatalog.filter((subject) => subject.group === group).map((subject) => { const active = selected.includes(subject.id); const status = subject.availability ?? (subject.testAvailable ? "available" : "planned"); return <button type="button" key={subject.id} className={`catalog-card ${active ? "selected" : ""}`} onClick={() => active ? setSelected((items) => items.filter((id) => id !== subject.id)) : selected.length < 6 ? setSelected((items) => [...items, subject.id]) : setPendingSubject(subject.id)}><span className="catalog-check">{active ? "✓" : ""}</span><span><strong>{subject.name}</strong><small>{subject.levels}</small></span><em className={status === "available" ? "available" : status === "unavailable" ? "unavailable" : "soon"}>{status === "available" ? "Test available" : status === "unavailable" ? "Unavailable" : "Coming next"}</em></button>; })}</div></section>)}</div><div className="onboarding-save"><div><strong>Choose exactly six subjects</strong><span>You can change them later from the dashboard.</span></div><button className="primary-button" disabled={selected.length !== 6 || saving} onClick={() => void save()}>{saving ? "Saving…" : "Save my subjects"} <span>→</span></button></div>{pendingSubject && <div className="subject-swap-backdrop" role="dialog" aria-modal="true" aria-label="Replace a subject"><div className="subject-swap"><span className="eyebrow">REPLACE A SUBJECT</span><h2>Add {subjectCatalog.find((item) => item.id === pendingSubject)?.name}</h2><p>Choose which current subject to replace.</p><div>{selected.map((id) => <button type="button" key={id} onClick={() => replaceSubject(id)}>{subjectCatalog.find((item) => item.id === id)?.name ?? id}<span>Replace →</span></button>)}</div><button type="button" className="secondary-button" onClick={() => setPendingSubject(null)}>Cancel</button></div></div>}</main>;
 }
