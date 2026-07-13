@@ -61,13 +61,19 @@ export type Question = {
   skill: string;
   difficulty: "Foundation" | "Standard" | "Challenge";
   premiumOnly?: boolean;
-  visual?: "motion-graph" | "circuit" | "wave" | "network" | "logic" | "erd" | "data-graph" | "function-graph";
+  visual?: "motion-graph" | "circuit" | "wave" | "network" | "logic" | "erd" | "data-graph" | "function-graph" | "data-table" | "bar-chart" | "geo-map" | "process-flow";
   visualData?: {
-    xLabel: string;
-    yLabel: string;
-    x: number[];
-    y: number[];
+    xLabel?: string;
+    yLabel?: string;
+    x?: number[];
+    y?: number[];
     uncertainty?: number;
+    title?: string;
+    columns?: string[];
+    rows?: Array<{ label: string; values: Array<string | number> }>;
+    categories?: string[];
+    nodes?: string[];
+    note?: string;
   };
   starterCode?: string;
   codeLanguage?: "python" | "java";
@@ -648,7 +654,7 @@ function generateTopicQuestions(subject: Subject, level: Level, paper: Paper, to
 
   const q4: Question = {
     id: id("4"), topicCode: topic.code, topicTitle: topic.title,
-    prompt: englishA ? (paper.id === "p1" ? `Write a focused analytical paragraph that moves from textual evidence to authorial purpose and a nuanced effect.` : `Outline a comparative essay with a conceptual thesis, three points of comparison and a qualified conclusion.`) : englishB ? (paper.id === "p1" ? `Produce a complete exam-style response on ${topic.title} using a clearly appropriate text type, register and organization.` : `Explain the writer's attitude and support it with two details, including one inferred rather than directly stated.`) : economics && paper.id === "p1" ? `Discuss the claim using economic theory, a fully labelled diagram, a real-world example and a supported judgement.` : economics ? `Evaluate the policy issue in the source. Consider time, assumptions and at least two stakeholders.` : individuals ? `Evaluate a contestable claim about ${topic.title}. Use specific evidence, a counterargument and a conditional judgement.` : math && paper.id === "p3" ? `Investigate a conjecture involving ${topic.concepts[0]} and ${topic.concepts[1]}. Test cases, generalize and justify your conclusion.` : csP2 ? `Complete a ${codeLanguage === "python" ? "Python program" : "Java method"} that uses ${topic.concepts.join(", ")}. Include validation and comment on the time complexity of your solution.` : `Explain the relationship between ${topic.concepts[0]} and ${topic.concepts[1]}. Use evidence from Figure 1 or a relevant example, then state one limitation.`,
+    prompt: englishA ? (paper.id === "p1" ? `Write a focused analytical paragraph that moves from textual evidence to authorial purpose and a nuanced effect.` : `Outline a comparative essay with a conceptual thesis, three points of comparison and a qualified conclusion.`) : englishB ? (paper.id === "p1" ? `Produce a complete exam-style response on ${topic.title} using a clearly appropriate text type, register and organization.` : `Explain the writer's attitude and support it with two details, including one inferred rather than directly stated.`) : economics && paper.id === "p1" ? `Discuss the claim using economic theory, a fully labelled diagram, a real-world example and a supported judgement.` : economics ? `Evaluate the policy issue in the source. Consider time, assumptions and at least two stakeholders.` : individuals ? `Evaluate a contestable claim about ${topic.title}. Use specific evidence, a counterargument and a conditional judgement.` : math && paper.id === "p3" ? `Investigate a conjecture involving ${topic.concepts[0]} and ${topic.concepts[1]}. Test cases, generalize and justify your conclusion.` : csP2 ? `Complete a ${codeLanguage === "python" ? "Python program" : "Java method"} that uses ${topic.concepts.join(", ")}. Include validation and comment on the time complexity of your solution.` : visual ? `Explain the relationship between ${topic.concepts[0]} and ${topic.concepts[1]}. Use evidence from Figure 1, then state one limitation.` : `Explain the relationship between ${topic.concepts[0]} and ${topic.concepts[1]}. Use a precise relevant example, then state one limitation.`,
     responseType: csP2 ? "code" : "extended", modelAnswer: `Connect ${topic.concepts.join(", ")} accurately, apply them and reach a supported conclusion. ${topic.definition}`,
     keywords: topic.concepts, marks: economics ? 15 : 8, skill: economics ? "Analysis and evaluation" : "Sustained reasoning", difficulty: "Challenge",
     visual: csP2 ? undefined : visual,
