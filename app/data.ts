@@ -1,4 +1,5 @@
 import { buildINSQuestionPool, getINSTopics } from "./ins-bank";
+import { buildScienceQuestionPool, getScienceTopics } from "./science-bank";
 
 export type Level = "SL" | "HL";
 
@@ -465,12 +466,12 @@ export const subjects: Subject[] = [
     { id: "p2", name: "Paper 2", description: "Structured and extended chemistry responses", format: "Multistep calculations · explanation · synthesis" },
   ], topics: chemistryTopics },
   { id: "ess", name: "Environmental Systems & Societies", shortName: "ESS", description: "Systems thinking, data, case studies and environmental evaluation", color: "#4f772d", softColor: "#eff7e8", levels: ["SL", "HL"], group: "Sciences", papers: [
-    { id: "p1", name: "Paper 1", description: "Case-study and source-based environmental analysis", format: "Sources · data · systems · short response" },
-    { id: "p2", name: "Paper 2", description: "Structured questions and extended evaluation", format: "Knowledge · case studies · argument · judgement" },
+    { id: "p1", name: "Data & systems mode", description: "Current-course data, systems and fieldwork response", format: "Sources · processing · systems · limitations" },
+    { id: "p2", name: "Structured evaluation mode", description: "Current-course explanation and environmental evaluation", format: "Evidence · perspectives · management · judgement" },
   ], topics: essTopics },
   { id: "design-technology", name: "Design Technology", shortName: "DT", description: "Human-centred design, materials, innovation and evaluation", color: "#8b5e34", softColor: "#f8efe5", levels: ["SL", "HL"], group: "Sciences", papers: [
-    { id: "p1", name: "Paper 1", description: "Core design concepts and application", format: "Concepts · stimulus · design decisions" },
-    { id: "p2", name: "Paper 2", description: "Structured design analysis and evaluation", format: "Case study · specification · justified evaluation" },
+    { id: "p1", name: "Stimulus response mode", description: "Original product brief, user evidence and short design decisions", format: "Evidence · specification · justified choice" },
+    { id: "p2", name: "Integrated design analysis", description: "Product, process, production and life-cycle evaluation", format: "Data · trade-offs · technical judgement" },
   ], topics: designTechnologyTopics },
   { id: "sehs", name: "Sports, Exercise & Health Science", shortName: "SE", description: "Physiology, biomechanics, psychology and performance data", color: "#d05a36", softColor: "#fff0e9", levels: ["SL", "HL"], group: "Sciences", papers: [
     { id: "p1a", name: "Paper 1A", description: "Multiple-choice questions", format: "Recall · application · quantitative reasoning" },
@@ -639,6 +640,8 @@ function generateTopicQuestions(subject: Subject, level: Level, paper: Paper, to
 }
 
 export function getLevelTopics(subject: Subject, level: Level) {
+  const detailedScience = getScienceTopics(subject.id, level);
+  if (detailedScience) return detailedScience;
   const detailedINS = getINSTopics(subject.id, level);
   if (detailedINS) return detailedINS;
   return subject.topics.filter((topic) => level === "HL" || topic.level === "both");
@@ -657,8 +660,8 @@ export function getPapers(subject: Subject, level: Level) {
 
 export function getRelevantTopics(subject: Subject, level: Level, paper: Paper) {
   if (paper.id === "concept") return getLevelTopics(subject, level);
-  if (getINSTopics(subject.id, level)) return getLevelTopics(subject, level);
-  return getLevelTopics(subject, level).filter((topic) => !paper.topicPrefixes?.length || paper.topicPrefixes.some((prefix) => topic.code.startsWith(prefix)));
+  const topics = getLevelTopics(subject, level);
+  return topics.filter((topic) => !paper.topicPrefixes?.length || paper.topicPrefixes.some((prefix) => topic.code.startsWith(prefix)));
 }
 
 const variantLenses = [
@@ -734,6 +737,8 @@ function makeVariant(question: Question, subject: Subject, paper: Paper, variant
 }
 
 export function buildQuestionPool(subject: Subject, level: Level, paper: Paper, topics: Topic[], premium: boolean, codeLanguage: "python" | "java" = "python", seed = 0, excludeIds: string[] = []) {
+  const detailedScience = buildScienceQuestionPool(subject, level, paper, topics, premium, seed, excludeIds, codeLanguage);
+  if (detailedScience) return detailedScience;
   const detailedINS = buildINSQuestionPool(subject, level, paper, topics, premium, seed, excludeIds);
   if (detailedINS) return detailedINS;
   const excluded = new Set(excludeIds);
