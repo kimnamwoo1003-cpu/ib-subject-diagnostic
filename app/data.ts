@@ -62,6 +62,13 @@ export type Question = {
   difficulty: "Foundation" | "Standard" | "Challenge";
   premiumOnly?: boolean;
   visual?: "motion-graph" | "circuit" | "wave" | "network" | "logic" | "erd" | "data-graph" | "function-graph";
+  visualData?: {
+    xLabel: string;
+    yLabel: string;
+    x: number[];
+    y: number[];
+    uncertainty?: number;
+  };
   starterCode?: string;
   codeLanguage?: "python" | "java";
   format?: "paper" | "concept-mcq";
@@ -76,6 +83,30 @@ export type Question = {
   markschemePoints?: string[];
   commonErrors?: string[];
 };
+
+const questionSignature = (question: Question) => [question.context ?? "", question.prompt, question.starterCode ?? ""]
+  .join("||").toLocaleLowerCase().replace(/\s+/g, " ").trim();
+
+const contentHash = (value: string) => {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+};
+
+export function deduplicateQuestionContent(subject: Subject, level: Level, paper: Paper, pool: Question[], excludeIds: string[]) {
+  const seen = new Set<string>();
+  const excluded = new Set(excludeIds);
+  return pool.flatMap((question) => {
+    const signature = questionSignature(question);
+    if (seen.has(signature)) return [];
+    seen.add(signature);
+    const normalized = { ...question, id: `${subject.id}-${level}-${paper.id}-content-${contentHash(signature)}` };
+    return excluded.has(normalized.id) ? [] : [normalized];
+  });
+}
 
 export type AssessmentCriterion = {
   code: string;
@@ -509,33 +540,33 @@ export const subjects: Subject[] = [
     { id: "p3", name: "Paper 3", description: "Social-enterprise decision-making response", format: "Stakeholders · recommendation · strategy", levels: ["HL"] },
   ], topics: businessTopics },
   { id: "geography", name: "Geography", shortName: "GE", description: "Case studies, geographic processes, data and spatial evaluation", color: "#39754a", softColor: "#eaf6ed", levels: ["SL", "HL"], group: "I&S", selectionMode: "multi", papers: [
-    { id: "p1", name: "Paper 1", description: "Geographic themes selected by the school", format: "SL two options · HL three options", topicPrefixes: ["OPT-"] },
-    { id: "p2", name: "Paper 2", description: "Geographic perspectives—global change", format: "Core themes · data · extended response", topicPrefixes: ["CORE-"] },
-    { id: "p3", name: "Paper 3", description: "HL global interactions extension", format: "Synthesis · case studies · evaluation", levels: ["HL"], topicPrefixes: ["HL-"] },
+    { id: "p1", name: "Paper 1", description: "Geographic themes selected by the school", format: "SL two options · HL three options", topicPrefixes: ["GEO1", "GEO2", "GEO3"] },
+    { id: "p2", name: "Paper 2", description: "Geographic perspectives—global change", format: "Core themes · data · extended response", topicPrefixes: ["GEO1", "GEO2", "GEO3"] },
+    { id: "p3", name: "Paper 3", description: "HL global interactions extension", format: "Synthesis · case studies · evaluation", levels: ["HL"], topicPrefixes: ["GEO4", "GEO5", "GEO6"] },
   ], topics: geographyTopics },
   { id: "history", name: "History", shortName: "HI", description: "Source evaluation, comparative essays and evidence-based argument", color: "#8b5a2b", softColor: "#f8efe6", levels: ["SL", "HL"], group: "I&S", selectionMode: "multi", papers: [
-    { id: "p1", name: "Paper 1", description: "Source-based prescribed subject", format: "Comprehension · comparison · origin/purpose/value/limitation", topicPrefixes: ["P1-"] },
-    { id: "p2", name: "Paper 2", description: "World history comparative essays", format: "Causation · comparison · sustained argument", topicPrefixes: ["P2-"] },
-    { id: "p3", name: "Paper 3", description: "Regional depth-study essays", format: "Precise evidence · historiography · synthesis", levels: ["HL"], topicPrefixes: ["P3-"] },
+    { id: "p1", name: "Paper 1", description: "Source-based prescribed subject", format: "Comprehension · comparison · origin/purpose/value/limitation" },
+    { id: "p2", name: "Paper 2", description: "World history comparative essays", format: "Causation · comparison · sustained argument" },
+    { id: "p3", name: "Paper 3", description: "Regional depth-study essays", format: "Precise evidence · historiography · synthesis", levels: ["HL"] },
   ], topics: historyTopics },
   { id: "global-politics", name: "Global Politics", shortName: "GP", description: "Power, sources, contemporary cases and political evaluation", color: "#3656a3", softColor: "#e9effc", levels: ["SL", "HL"], group: "I&S", papers: [
-    { id: "p1", name: "Paper 1", description: "Source-based power and global politics", format: "Sources · concepts · contemporary examples", topicPrefixes: ["C"] },
-    { id: "p2", name: "Paper 2", description: "Extended-response inquiry using course concepts and contemporary cases", format: "SL three essays · HL four essays with HL extension content", topicPrefixes: ["T", "H"] },
+    { id: "p1", name: "Paper 1", description: "Source-based power and global politics", format: "Sources · concepts · contemporary examples" },
+    { id: "p2", name: "Paper 2", description: "Extended-response inquiry using course concepts and contemporary cases", format: "SL three essays · HL four essays with HL extension content" },
   ], topics: globalPoliticsTopics },
   { id: "psychology", name: "Psychology", shortName: "PS", description: "2027 concepts, contexts, research methods and evidence", color: "#8e3a70", softColor: "#f9eaf3", levels: ["SL", "HL"], group: "I&S", papers: [
-    { id: "p1", name: "Paper 1", description: "Concepts, content and contexts", format: "Short response · application · extended response", topicPrefixes: ["PSY1", "PSY2", "PSY3", "PSY4"] },
-    { id: "p2", name: "Paper 2", description: "Research methodology and class practicals", format: "Methods · design · unseen research evaluation", topicPrefixes: ["PSY5"] },
-    { id: "p3", name: "Paper 3", description: "HL data analysis and interpretation", format: "Multiple sources · data · synthesis", levels: ["HL"], topicPrefixes: ["PSYH"] },
+    { id: "p1", name: "Paper 1", description: "Concepts, content and contexts", format: "Short response · application · extended response" },
+    { id: "p2", name: "Paper 2", description: "Research methodology and class practicals", format: "Methods · design · unseen research evaluation", topicPrefixes: ["PSY1", "PSY2", "PSY3", "PSY4", "PSY5", "PSY6"] },
+    { id: "p3", name: "Paper 3", description: "HL data analysis and interpretation", format: "Multiple sources · data · synthesis", levels: ["HL"] },
   ], topics: psychologyTopics },
   { id: "digital-society", name: "Digital Society", shortName: "DS", description: "Digital systems, social impacts, sources and ethical evaluation", color: "#4e5d6c", softColor: "#edf1f4", levels: ["SL", "HL"], group: "I&S", papers: [
     { id: "p1", name: "Paper 1", description: "Concepts, content and contexts", format: "Structured response · real-world examples" },
     { id: "p2", name: "Paper 2", description: "Source-based digital inquiry", format: "Source evaluation · synthesis · judgement" },
-    { id: "p3", name: "Paper 3", description: "HL challenge inquiry", format: "Pre-release · complex digital challenge", levels: ["HL"], topicPrefixes: ["DSH"] },
+    { id: "p3", name: "Paper 3", description: "HL challenge inquiry", format: "Pre-release · complex digital challenge", levels: ["HL"], topicPrefixes: ["DS-HL"] },
   ], topics: digitalSocietyTopics },
   { id: "philosophy", name: "Philosophy", shortName: "PL", description: "Conceptual argument, prescribed texts and critical evaluation", color: "#653d8c", softColor: "#f1eafa", levels: ["SL", "HL"], group: "I&S", papers: [
-    { id: "p1", name: "Paper 1", description: "Core and optional themes", format: "Conceptual analysis · argument · evaluation", topicPrefixes: ["PHI1", "PHI2"] },
-    { id: "p2", name: "Paper 2", description: "Prescribed philosophical text", format: "Textual argument · critical response", topicPrefixes: ["PHI3"] },
-    { id: "p3", name: "Paper 3", description: "HL response to unseen philosophical text", format: "Unseen text · philosophical response", levels: ["HL"], topicPrefixes: ["PHIH"] },
+    { id: "p1", name: "Paper 1", description: "Core and optional themes", format: "Conceptual analysis · argument · evaluation" },
+    { id: "p2", name: "Paper 2", description: "Prescribed philosophical text", format: "Textual argument · critical response" },
+    { id: "p3", name: "Paper 3", description: "HL response to unseen philosophical text", format: "Unseen text · philosophical response", levels: ["HL"] },
   ], topics: philosophyTopics },
   { id: "anthropology", name: "Social & Cultural Anthropology", shortName: "AN", description: "Ethnography, culture, inequality and comparative analysis", color: "#9a4d3e", softColor: "#faece9", levels: ["SL", "HL"], group: "I&S", papers: [
     { id: "p1", name: "Paper 1", description: "Concepts and ethnographic material", format: "Unseen material · concepts · comparison" },
@@ -761,6 +792,10 @@ export function buildQuestionPool(subject: Subject, level: Level, paper: Paper, 
   return fresh.length >= Math.min(24, pool.length) ? fresh : shuffleBySeed(pool, seed + 7919);
 }
 
+export function buildUniqueQuestionPool(subject: Subject, level: Level, paper: Paper, topics: Topic[], premium: boolean, codeLanguage: "python" | "java" = "python", seed = 0, excludeIds: string[] = []) {
+  return deduplicateQuestionContent(subject, level, paper, buildQuestionPool(subject, level, paper, topics, premium, codeLanguage, seed, []), excludeIds);
+}
+
 export function buildQuestions(subject: Subject, level: Level, paper: Paper, topics: Topic[], premium: boolean, targetCount?: number, codeLanguage: "python" | "java" = "python", seed = 0, excludeIds: string[] = []) {
-  return buildQuestionPool(subject, level, paper, topics, premium, codeLanguage, seed, excludeIds).slice(0, targetCount ?? (premium ? 16 : 8));
+  return buildUniqueQuestionPool(subject, level, paper, topics, premium, codeLanguage, seed, excludeIds).slice(0, targetCount ?? (premium ? 16 : 8));
 }
