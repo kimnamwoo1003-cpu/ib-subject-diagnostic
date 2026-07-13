@@ -179,7 +179,15 @@ function business(subject: Subject, paper: Paper, node: Node, v: number, d: numb
   if (paper.id === "p2" && (/BM3|BM5.5/.test(node.code))) {
     const price = 70 + v * 2, vc = 38 + v, fixed = 120000 + v * 5000;
     const points = [`Formula: break-even output = fixed costs / contribution per unit.`, `Substitute $${fixed} / ($${price} − $${vc}).`, `Interpret the result against capacity and case risk.`, `A later recommendation must also use stakeholder and uncertainty evidence.`];
-    return baseQuestion(subject, paper, node, v, d, `${d <= 2 ? "Calculate" : d === 3 ? "Analyse" : "Evaluate"} the financial implications of the proposed investment for ${org}.`, `${ctx}\nQuantitative stimulus: price $${price}; variable cost $${vc}; annual fixed costs $${fixed}; planned capacity ${5000 + v * 150} units.`, d <= 2 ? "Calculate" : d === 3 ? "Analyse" : "Evaluate", d <= 2 ? 4 : d === 3 ? 6 : 10, points, ["number without method", "no units", "calculation not interpreted", "recommendation ignores qualitative evidence"]);
+    return {
+      ...baseQuestion(subject, paper, node, v, d, `${d <= 2 ? "Calculate" : d === 3 ? "Analyse" : "Evaluate"} the financial implications of the proposed investment for ${org}.`, ctx, d <= 2 ? "Calculate" : d === 3 ? "Analyse" : "Evaluate", d <= 2 ? 4 : d === 3 ? 6 : 10, points, ["number without method", "no units", "calculation not interpreted", "recommendation ignores qualitative evidence"]),
+      visual: "data-table",
+      visualData: {
+        title: "Quantitative stimulus",
+        columns: ["Price per unit", "Variable cost per unit", "Annual fixed costs", "Planned capacity"],
+        rows: [{ label: org, values: [`$${price}`, `$${vc}`, `$${fixed.toLocaleString("en-US")}`, `${5000 + v * 150} units`] }],
+      },
+    };
   }
   const command = d === 1 ? "Define" : d === 2 ? "Explain" : d === 3 ? "Analyse" : d === 4 ? "Evaluate" : "Recommend";
   const marks = d === 1 ? 2 : d === 2 ? 4 : d === 3 ? 6 : 10;
@@ -203,38 +211,67 @@ function economics(subject: Subject, paper: Paper, node: Node, v: number, d: num
   }
   const command = d === 1 ? "Define" : d === 2 ? "Calculate" : d === 3 ? "Explain" : d === 4 ? "Evaluate" : "Recommend";
   const marks = d === 1 ? 2 : d === 2 ? 4 : d === 3 ? 8 : 15;
-  const data = `Data table: initial index 125; final index ${130 + v}; household income $${2400 + v * 90}; imported basket cost $${420 + v * 15}.`;
+  const finalIndex = 130 + v; const householdIncome = 2400 + v * 90; const importedCost = 420 + v * 15;
   const prompt = d === 1 ? `Define ${node.concepts[0]}.` : d === 2 ? `Using the data, calculate the percentage change in the index. Show formula, substitution and result.` : d === 3 ? `Using the extract and a labelled diagram, explain two consequences of ${node.title}.` : d === 4 ? `Using the extract and your economic knowledge, evaluate one policy response to ${node.title}.` : `Recommend the most appropriate policy response for ${place}, considering an alternative.`;
-  return baseQuestion(subject, paper, node, v, d, prompt, `${ctx}\n${data}`, command, marks, [`Use all necessary extract/data evidence.`, `Apply accurate theory and a correctly specified diagram where relevant.`, `Separate short-run from long-run and identify stakeholders.`, `For evaluation, support a conditional judgement and policy limitation.`], ["hidden data assumed", "missing formula or units", "source paraphrase", "unsupported policy assertion"]);
+  return {
+    ...baseQuestion(subject, paper, node, v, d, prompt, ctx, command, marks, [`Use all necessary extract/data evidence.`, `Apply accurate theory and a correctly specified diagram where relevant.`, `Separate short-run from long-run and identify stakeholders.`, `For evaluation, support a conditional judgement and policy limitation.`], ["hidden data assumed", "missing formula or units", "source paraphrase", "unsupported policy assertion"], d === 3 ? "diagram" : undefined),
+    visual: "data-table",
+    visualData: {
+      title: `Economic indicators for ${place}`,
+      columns: ["Initial index", "Final index", "Household income", "Imported basket cost"],
+      rows: [{ label: String(year), values: [125, finalIndex, `$${householdIncome.toLocaleString("en-US")}`, `$${importedCost.toLocaleString("en-US")}`] }],
+      note: "All monetary values are fictional and shown in local currency units.",
+    },
+  };
 }
 
 function geography(subject: Subject, paper: Paper, node: Node, v: number, d: number): Question {
-  const [place, setting, year] = contexts[v % contexts.length]; const a = 42 + v * 3, b = 58 + v * 2;
-  const ctx = `Figure 1 (original dataset): ${place}, ${year}. Indicator X rose from ${a} to ${b}; the urban core reached ${b + 18}, while the rural periphery remained at ${a - 9}. A map description shows the highest values along a transport corridor and lower values in two hazard-exposed districts. Source coverage excludes informal settlements.`;
+  const [place,, year] = contexts[v % contexts.length]; const a = 42 + v * 3, b = 58 + v * 2;
+  const ctx = `Figure 1 shows an original spatial dataset for ${place}, ${year}. Source coverage excludes informal settlements.`;
   const command = d === 1 ? "Describe" : d === 2 ? "Explain" : d === 3 ? "Compare" : d === 4 ? "Evaluate" : "To what extent";
   const marks = paper.id === "p3" ? (d >= 4 ? 16 : 12) : d === 1 ? 2 : d === 2 ? 4 : d === 3 ? 6 : 10;
   const prompt = d === 1 ? `Describe the spatial pattern shown in Figure 1.` : d === 2 ? `Explain one process that may account for the pattern in Figure 1.` : d === 3 ? `Compare the pattern in the urban core and rural periphery, using paired evidence.` : d === 4 ? `Evaluate one strategy for addressing ${node.title} in ${place}.` : `To what extent is power more important than physical process in explaining ${node.title}?`;
-  return baseQuestion(subject, paper, node, v, d, prompt, ctx, command, marks, [`Use precise values, directions, locations or anomalies from the stimulus.`, `For explanation, connect process → spatial outcome.`, `Use PPPPSS concepts and a relevant case study at the required scale.`, `For high marks, evaluate limitations and reach a qualified judgement.`], ["lists values without pattern", "explains when asked to describe", "case name without detail", "comparison written as separate descriptions"]);
+  return {
+    ...baseQuestion(subject, paper, node, v, d, prompt, ctx, command, marks, [`Use precise values, directions, locations or anomalies from the stimulus.`, `For explanation, connect process → spatial outcome.`, `Use PPPPSS concepts and a relevant case study at the required scale.`, `For high marks, evaluate limitations and reach a qualified judgement.`], ["lists values without pattern", "explains when asked to describe", "case name without detail", "comparison written as separate descriptions"]),
+    visual: "geo-map",
+    visualData: {
+      title: `Spatial distribution of indicator X in ${place}`,
+      columns: ["Earlier value", "Current value"],
+      rows: [{ label: "Regional mean", values: [a, b] }, { label: "Urban core", values: [a + 7, b + 18] }, { label: "Rural periphery", values: [a - 12, a - 9] }],
+      y: [b + 18, b, a - 9, a - 15],
+      note: "Highest values follow the transport corridor; the two hatched districts are hazard-exposed.",
+    },
+  };
 }
 
 function globalPolitics(subject: Subject, paper: Paper, node: Node, v: number, d: number): Question {
   const [place,, year] = contexts[v % contexts.length];
-  const ctx = `Source A (${year}, government statement): a regional data-sharing agreement is necessary for security and economic stability.\nSource B (${year}, civil-society briefing): oversight is weak and marginalized groups face disproportionate surveillance.\nSource C (${year}, original chart description): cross-border incidents fell 18%, while formal complaints about data misuse rose 31%.\nSource D (${year}, editorial cartoon description): a small state holds a giant key while standing beneath cables owned by foreign companies. All sources are fictional parallel material.`;
-  if (paper.id === "p2") return baseQuestion(subject, paper, node, v, d, `Discuss the claim that ${node.title} is shaped more by non-state actors than by states.`, ctx, "Discuss", 15, [`Define and debate the central concepts.`, `Use developed contemporary examples and more than one perspective.`, `Integrate a counterargument and mini-judgements.`, `Reach a consistent, qualified conclusion.`], ["one-sided advocacy", "examples only named", "theory name-dropped", "no judgement"]);
-  if (paper.id === "p3") return baseQuestion(subject, paper, node, v, d, `Using the sources and your case-study knowledge, recommend an intervention addressing ${node.title} in ${place}.`, ctx, "Recommend", d >= 4 ? 14 : 8, [`Synthesize more than one source and case.`, `Identify stakeholders and barriers.`, `Evaluate feasibility, rights, legitimacy and alternative perspectives.`, `Give a prioritized recommendation.`], ["recommendation before analysis", "barriers ignored", "sources summarized separately"]);
+  const ctx = `Source A (${year}, government statement): a regional data-sharing agreement is necessary for security and economic stability.\nSource B (${year}, civil-society briefing): oversight is weak and marginalized groups face disproportionate surveillance.\nSource D (${year}, editorial cartoon): a small state holds a giant key while standing beneath cables owned by foreign companies. All sources are fictional parallel material.`;
+  const withChart = (question: Question): Question => ({ ...question, visual: "bar-chart", visualData: { title: "Source C — reported change after the agreement", categories: ["Cross-border incidents", "Data-misuse complaints"], y: [-18, 31], yLabel: "Change / %", note: "Values are changes from the previous reporting period." } });
+  if (paper.id === "p2") return withChart(baseQuestion(subject, paper, node, v, d, `Discuss the claim that ${node.title} is shaped more by non-state actors than by states.`, ctx, "Discuss", 15, [`Define and debate the central concepts.`, `Use developed contemporary examples and more than one perspective.`, `Integrate a counterargument and mini-judgements.`, `Reach a consistent, qualified conclusion.`], ["one-sided advocacy", "examples only named", "theory name-dropped", "no judgement"]));
+  if (paper.id === "p3") return withChart(baseQuestion(subject, paper, node, v, d, `Using the sources and your case-study knowledge, recommend an intervention addressing ${node.title} in ${place}.`, ctx, "Recommend", d >= 4 ? 14 : 8, [`Synthesize more than one source and case.`, `Identify stakeholders and barriers.`, `Evaluate feasibility, rights, legitimacy and alternative perspectives.`, `Give a prioritized recommendation.`], ["recommendation before analysis", "barriers ignored", "sources summarized separately"]));
   const command = d === 1 ? "Identify" : d === 2 ? "Explain" : d === 3 ? "Compare and contrast" : "Evaluate";
   const marks = d === 1 ? 3 : d === 2 ? 4 : d === 3 ? 8 : 10;
   const prompt = d === 1 ? `Identify three points made in Source A about ${node.title}.` : d === 2 ? `Using Source B, explain the concept of ${node.concepts[0]}.` : d === 3 ? `Compare and contrast the perspectives in Sources A and B.` : `Using the sources and your own knowledge, evaluate the claim that the agreement strengthens legitimate political authority.`;
-  return baseQuestion(subject, paper, node, v, d, prompt, ctx, command, marks, [`Use the specified sources directly rather than transcribing.`, `For comparison, pair similarities and differences under common criteria.`, `For evaluation, synthesize source evidence with own knowledge.`, `Judge the claim with a counterargument.`], ["source paraphrase", "two separate source summaries", "origin called biased without purpose/context", "own knowledge absent"]);
+  return withChart(baseQuestion(subject, paper, node, v, d, prompt, ctx, command, marks, [`Use the specified sources directly rather than transcribing.`, `For comparison, pair similarities and differences under common criteria.`, `For evaluation, synthesize source evidence with own knowledge.`, `Judge the claim with a counterargument.`], ["source paraphrase", "two separate source summaries", "origin called biased without purpose/context", "own knowledge absent"]));
 }
 
 function history(subject: Subject, paper: Paper, node: Node, v: number, d: number): Question {
   const cases = node.examples.length ? node.examples : ["Castro", "Mao", "Hitler", "Stalin"]; const c1 = cases[v % cases.length], c2 = cases[(v + 1) % cases.length];
-  const ctx = `Source A (fictional historian summary): ${c1}'s consolidation depended on institutions and elite choices as well as coercion.\nSource B (fictional contemporary report): public demonstrations and administrative controls appeared simultaneously; its author had limited access outside the capital.\nSource C (original table description): party membership, arrests and industrial output change unevenly over four years.`;
+  const ctx = `Source A (fictional historian summary): ${c1}'s consolidation depended on institutions and elite choices as well as coercion.\nSource B (fictional contemporary report): public demonstrations and administrative controls appeared simultaneously; its author had limited access outside the capital.`;
   if (paper.id === "p1") {
     const command = d === 1 ? "Identify" : d === 2 ? "Compare and contrast" : d === 3 ? "Evaluate" : "Examine";
     const marks = d === 1 ? 3 : d === 2 ? 6 : d === 3 ? 9 : 9;
-    return baseQuestion(subject, paper, node, v, d, d === 1 ? `Identify three claims made in Source A.` : d === 2 ? `Compare and contrast what Sources A and B reveal about ${node.title}.` : `Using the sources and your own knowledge, examine the significance of ${node.concepts[0]} for authoritarian rule under ${c1}.`, ctx, command, marks, [`Use source-specific evidence and historical context.`, `Evaluate origin/purpose only in relation to the question.`, `Distinguish causation, consequence and chronology.`, `Avoid claims not supported by source or permitted knowledge.`], ["content summary instead of source analysis", "generic value/limitation", "anachronism", "single-cause claim"]);
+    return {
+      ...baseQuestion(subject, paper, node, v, d, d === 1 ? `Identify three claims made in Source A.` : d === 2 ? `Compare and contrast what Sources A and B reveal about ${node.title}.` : `Using the sources and your own knowledge, examine the significance of ${node.concepts[0]} for authoritarian rule under ${c1}.`, ctx, command, marks, [`Use source-specific evidence and historical context.`, `Evaluate origin/purpose only in relation to the question.`, `Distinguish causation, consequence and chronology.`, `Avoid claims not supported by source or permitted knowledge.`], ["content summary instead of source analysis", "generic value/limitation", "anachronism", "single-cause claim"]),
+      visual: "data-table",
+      visualData: {
+        title: "Source C — indexed change during consolidation (Year 1 = 100)",
+        columns: ["Party membership", "Arrests", "Industrial output"],
+        rows: [0, 1, 2, 3].map((yearOffset) => ({ label: `Year ${yearOffset + 1}`, values: [100 + yearOffset * (6 + v % 3), 100 + yearOffset * (15 - v % 4), 100 + yearOffset * (3 + v % 2)] })),
+        note: "The figures are fictional parallel-source data; indices are not absolute totals.",
+      },
+    };
   }
   const prompt = d <= 2 ? `Evaluate the importance of ${node.concepts[0]} in the ${node.title.toLowerCase()} of one authoritarian state.` : `Compare and contrast the role of ${node.concepts[0]} in ${node.title.toLowerCase()} in ${c1} and ${c2}.`;
   return baseQuestion(subject, paper, node, v, d, prompt, "No prescribed source. Use precise, relevant historical evidence from the cases studied.", d <= 2 ? "Evaluate" : "Compare and contrast", 15, [`Establish a clear thesis responsive to the command term.`, `Use precise evidence with actors, policies, dates/periods and outcomes.`, `Organize comparative paragraphs by common criteria, not two halves.`, `Weigh relative significance and qualify the conclusion.`], ["narrative chronology", "two separate case descriptions", "unsupported historiography", "evidence named but not analysed"]);
@@ -253,16 +290,19 @@ function philosophy(subject: Subject, paper: Paper, node: Node, v: number, d: nu
 }
 
 function psychology(subject: Subject, paper: Paper, node: Node, v: number, d: number): Question {
-  const sample = 48 + v * 6; const ctx = `Supplied study (original): ${sample} students were assigned by existing class to either a guided retrieval activity or rereading. Recall was measured immediately and after seven days. The retrieval group mean fell from ${76 - v}% to ${61 - v}%; the rereading group fell from ${69 - v}% to ${47 - v}%. Teachers knew group allocation, participation required parental consent, and prior achievement was not measured.`;
+  const sample = 48 + v * 6; const retrievalNow = 76 - v, retrievalLater = 61 - v, rereadNow = 69 - v, rereadLater = 47 - v;
+  const ctx = `Supplied study (original): ${sample} students were assigned by existing class to either a guided retrieval activity or rereading. Recall was measured immediately and after seven days. Teachers knew group allocation, participation required parental consent, and prior achievement was not measured.`;
+  const withResults = (question: Question): Question => ({ ...question, visual: "bar-chart", visualData: { title: "Mean recall score by condition and time", categories: ["Retrieval — immediate", "Retrieval — 7 days", "Rereading — immediate", "Rereading — 7 days"], y: [retrievalNow, retrievalLater, rereadNow, rereadLater], yLabel: "Mean recall / %", note: `Total sample: ${sample}; intact classes were used rather than individual random allocation.` } });
   if (paper.id === "p3") {
     const marks = d === 1 ? 3 : d <= 3 ? 6 : 15; const command = d === 1 ? "Interpret" : d <= 3 ? "Analyse" : "Discuss";
     const prompt = d === 1 ? `Interpret one pattern in the supplied quantitative results.` : d <= 3 ? `Analyse one methodological feature of the supplied study with reference to ${node.title}.` : `Using the supplied study and at least two additional sources described in the resource booklet, discuss the validity of the claim that retrieval activity causes durable learning improvement.`;
-    return baseQuestion(subject, paper, node, v, d, prompt, `${ctx}\nResource booklet note: Source B is a qualitative interview study with a small self-selected sample; Source C is a two-year observational dataset showing mixed effects by prior achievement.`, command, marks, [`Use exact source evidence.`, `Separate correlation, causation and methodological inference.`, `For 15 marks, integrate at least three sources and background knowledge.`, `Reach a proportionate conclusion about validity.`], ["study detail invented", "correlation treated as cause", "sources listed not synthesized", "generic method limitation"]);
+    return withResults(baseQuestion(subject, paper, node, v, d, prompt, `${ctx}\nResource booklet note: Source B is a qualitative interview study with a small self-selected sample; Source C is a two-year observational dataset showing mixed effects by prior achievement.`, command, marks, [`Use exact source evidence.`, `Separate correlation, causation and methodological inference.`, `For 15 marks, integrate at least three sources and background knowledge.`, `Reach a proportionate conclusion about validity.`], ["study detail invented", "correlation treated as cause", "sources listed not synthesized", "generic method limitation"]));
   }
-  if (paper.id === "p2") return baseQuestion(subject, paper, node, v, d, d <= 2 ? `Describe how one research method could be used in a class practical investigating ${node.title}.` : d === 3 ? `Compare and contrast two methods for investigating ${node.title}.` : `Discuss the supplied study with reference to measurement, bias and responsibility.`, ctx, d <= 2 ? "Describe" : d === 3 ? "Compare and contrast" : "Discuss", d <= 2 ? 4 : d === 3 ? 6 : 15, [`Specify aim, sample, operationalization and procedure.`, `Connect strengths/limitations to this research question.`, `Use concepts analytically rather than as headings.`, `For design, align method, data and ethics.`], ["method named without procedure", "reliability and validity confused", "student's own practical invented", "ethics generic"]);
+  if (paper.id === "p2") return withResults(baseQuestion(subject, paper, node, v, d, d <= 2 ? `Describe how one research method could be used in a class practical investigating ${node.title}.` : d === 3 ? `Compare and contrast two methods for investigating ${node.title}.` : `Discuss the supplied study with reference to measurement, bias and responsibility.`, ctx, d <= 2 ? "Describe" : d === 3 ? "Compare and contrast" : "Discuss", d <= 2 ? 4 : d === 3 ? 6 : 15, [`Specify aim, sample, operationalization and procedure.`, `Connect strengths/limitations to this research question.`, `Use concepts analytically rather than as headings.`, `For design, align method, data and ethics.`], ["method named without procedure", "reliability and validity confused", "student's own practical invented", "ethics generic"]));
   const marks = d === 1 ? 4 : d <= 3 ? 6 : 15; const command = d === 1 ? "Describe" : d <= 3 ? "Explain" : "Critically analyse";
   const prompt = d === 1 ? `Describe ${node.title} and give one relevant example.` : d <= 3 ? `Explain how ${node.title} is demonstrated in the scenario.` : `Critically analyse one explanation of behavior through the concept of ${node.concepts[0]}.`;
-  return baseQuestion(subject, paper, node, v, d, prompt, d <= 3 ? ctx : "Use relevant theories and research. Named-study procedural recall is not the primary demand.", command, marks, [`Accurately explain the psychological content.`, `Apply it to the example or unfamiliar scenario.`, `For 15 marks, evaluate research/method, perspectives and the named concept.`, `Reach a focused conclusion.`], ["named study recited without relevance", "scenario not applied", "method evaluation detached", "concept only defined"]);
+  const question = baseQuestion(subject, paper, node, v, d, prompt, d <= 3 ? ctx : "Use relevant theories and research. Named-study procedural recall is not the primary demand.", command, marks, [`Accurately explain the psychological content.`, `Apply it to the example or unfamiliar scenario.`, `For 15 marks, evaluate research/method, perspectives and the named concept.`, `Reach a focused conclusion.`], ["named study recited without relevance", "scenario not applied", "method evaluation detached", "concept only defined"]);
+  return d <= 3 ? withResults(question) : question;
 }
 
 function anthropology(subject: Subject, paper: Paper, node: Node, v: number, d: number): Question {
@@ -275,11 +315,15 @@ function anthropology(subject: Subject, paper: Paper, node: Node, v: number, d: 
 
 function digitalSociety(subject: Subject, paper: Paper, node: Node, v: number, d: number): Question {
   const [place,, year] = contexts[v % contexts.length];
-  const ctx = `Source A (${year}): ${place} deploys an automated public-service ranking system using application history, location, household records and user feedback. Officials report processing time fell ${18 + v * 2}%.\nSource B: an advocacy group finds higher rejection rates in two low-connectivity districts; subgroup accuracy is not published.\nSource C: the vendor states that aggregate accuracy is 94% and that final decisions remain with staff.\nSystem map: data collection → cleaning → model score → staff review → service decision → appeal → feedback data.`;
+  const ctx = `Source A (${year}): ${place} deploys an automated public-service ranking system using application history, location, household records and user feedback. Officials report processing time fell ${18 + v * 2}%.\nSource B: an advocacy group finds higher rejection rates in two low-connectivity districts; subgroup accuracy is not published.\nSource C: the vendor states that aggregate accuracy is 94% and that final decisions remain with staff.`;
   const command = d === 1 ? "Define" : d === 2 ? "Outline" : d === 3 ? "Explain" : d === 4 ? "Evaluate" : "Recommend";
   const marks = d === 1 ? 2 : d === 2 ? 4 : d === 3 ? 6 : paper.id === "p3" ? 12 : 8;
   const prompt = d === 1 ? `Define ${node.concepts[0]}.` : d === 2 ? `Outline two system components relevant to ${node.title}.` : d === 3 ? `Explain two ways in which ${node.title} may shape outcomes for stakeholders.` : d === 4 ? `Using the sources, evaluate the claim that the system is fair.` : `Recommend an intervention and evaluate it using equity, feasibility, acceptability, cost and accountability.`;
-  return baseQuestion(subject, paper, node, v, d, prompt, ctx, command, marks, [`Explain the digital system, not only social impact.`, `Use source claims, evidence, perspectives and limitations.`, `Distinguish stakeholder effects and avoid homogeneous users.`, `For evaluation/recommendation, weigh criteria and reach a qualified judgement.`], ["technology labelled good or bad", "aggregate accuracy equated with fairness", "correlation treated as causation", "intervention has no evaluation criteria"]);
+  return {
+    ...baseQuestion(subject, paper, node, v, d, prompt, ctx, command, marks, [`Explain the digital system, not only social impact.`, `Use source claims, evidence, perspectives and limitations.`, `Distinguish stakeholder effects and avoid homogeneous users.`, `For evaluation/recommendation, weigh criteria and reach a qualified judgement.`], ["technology labelled good or bad", "aggregate accuracy equated with fairness", "correlation treated as causation", "intervention has no evaluation criteria"]),
+    visual: "process-flow",
+    visualData: { title: "System map", nodes: ["Data collection", "Cleaning", "Model score", "Staff review", "Service decision", "Appeal", "Feedback data"], note: "Appeal outcomes feed back into later data collection." },
+  };
 }
 
 function worldReligions(subject: Subject, paper: Paper, node: Node, v: number, d: number): Question {
