@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createPasswordRecord, createRecoveryCode, normalizeRecoveryCode, normalizeUsername, validatePassword, validateRecoveryCode, validateUsername, verifyPassword } from "../app/password-auth.ts";
 import { mergeSelectedSubjectLevel } from "../app/profile-level.ts";
+import { canReviewPremiumRequest, validatePremiumRequest } from "../app/premium-request.ts";
 import { ADMIN_USERNAME, isAdminUsername } from "../app/server-auth.ts";
 
 test("only the exact site username justinnamwoo1003 receives admin", () => {
@@ -43,4 +44,14 @@ test("changing one course level preserves all other saved subject levels", () =>
   const after = mergeSelectedSubjectLevel(selected, before, "physics", "HL");
   assert.deepEqual(after, { ...before, physics: "HL" });
   assert.throws(() => mergeSelectedSubjectLevel(selected, before, "biology", "HL"));
+});
+
+test("Premium payment applications require verifiable details and can only be reviewed once", () => {
+  const valid = validatePremiumRequest({ amountKrw: "10000", paymentMethod: "bank_transfer", payerName: "Justin Kim", paymentReference: "TRANSFER-240714", note: "Paid tonight" });
+  assert.deepEqual(valid.value, { amountKrw: 10000, paymentMethod: "bank_transfer", payerName: "Justin Kim", paymentReference: "TRANSFER-240714", note: "Paid tonight" });
+  assert.ok("error" in validatePremiumRequest({ amountKrw: 0, paymentMethod: "bank_transfer", payerName: "J", paymentReference: "x" }));
+  assert.ok("error" in validatePremiumRequest({ amountKrw: 10000, paymentMethod: "card", payerName: "Justin Kim", paymentReference: "TRANSFER-240714" }));
+  assert.equal(canReviewPremiumRequest("pending"), true);
+  assert.equal(canReviewPremiumRequest("approved"), false);
+  assert.equal(canReviewPremiumRequest("rejected"), false);
 });
