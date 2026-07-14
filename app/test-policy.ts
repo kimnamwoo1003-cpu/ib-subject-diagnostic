@@ -23,10 +23,11 @@ export function isSingleTopicPaper(subjectId: string, paperId: string) {
 
 export function topicLimitFor(subject: Subject, paper: Paper) {
   if (isSingleTopicPaper(subject.id, paper.id)) return 1;
-  if (paper.id === "concept") return 12;
+  if (paper.id === "concept") return 10;
   if (paper.id === "p3") return 2;
+  if (subject.id === "cs" && paper.id === "p2") return 5;
   if (languageB(subject.id) && paper.id === "p2r") return 5;
-  if (subject.group === "Mathematics") return 6;
+  if (subject.group === "Mathematics") return paper.id === "p2" ? 4 : 6;
   if (subject.group === "Sciences") return paper.id === "p1a" ? 12 : 6;
   if (subject.group === "I&S") return 4;
   return 6;
@@ -54,4 +55,3 @@ export function buildTestPlan(subject: Subject, paper: Paper, topicCount: number
   const plannedMinutes = singleTopic ? 60 : Math.min(60, Math.max(15, questionCount * typicalMinutes + 4));
   return { questionCount, seconds: plannedMinutes * 60, plannedMinutes, typicalMinutes, singleTopic };
 }
-
