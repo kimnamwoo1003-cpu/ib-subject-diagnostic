@@ -20,7 +20,41 @@ test("every available subject paper has unique content and a plan no longer than
         const plan = buildTestPlan(subject, paper, topics.length, true, "diagnostic", pool);
         assert.ok(plan.seconds > 0 && plan.seconds <= 3600, `${subject.id} ${level} ${paper.id} has an invalid timer`);
         assert.ok(plan.questionCount <= pool.length, `${subject.id} ${level} ${paper.id} target exceeds its unique pool`);
+        if (!isSingleTopicPaper(subject.id, paper.id)) assert.ok(plan.questionCount >= topics.length, `${subject.id} ${level} ${paper.id} cannot cover every selected topic`);
         if (isSingleTopicPaper(subject.id, paper.id)) assert.equal(topicLimitFor(subject, paper), 1);
+      }
+    }
+  }
+});
+
+test("Computer Science Paper 2 has a deep, topic-specific coding pool", () => {
+  const subject = subjects.find((item) => item.id === "cs");
+  for (const level of subject.levels) {
+    const paper = getPapers(subject, level).find((item) => item.id === "p2");
+    const topics = getRelevantTopics(subject, level, paper).slice(0, topicLimitFor(subject, paper));
+    const pool = buildUniqueQuestionPool(subject, level, paper, topics, true, "python", 73, []);
+    assert.ok(pool.length >= topics.length * 15, `CS ${level} Paper 2 pool is too shallow`);
+    assert.equal(new Set(pool.map((question) => question.topicCode)).size, topics.length, `CS ${level} Paper 2 misses a selected topic`);
+    assert.ok(pool.every((question) => question.responseType === "code" && question.starterCode), `CS ${level} Paper 2 must use a code editor`);
+  }
+});
+
+test("every I&S paper item includes syllabus, command-term and markscheme quality controls", () => {
+  for (const subject of subjects.filter((item) => item.group === "I&S")) {
+    for (const level of subject.levels) {
+      for (const paper of getPapers(subject, level)) {
+        const topics = getRelevantTopics(subject, level, paper);
+        const pool = buildQuestionPool(subject, level, paper, topics, true, "python", 41);
+        assert.ok(pool.length, `${subject.id} ${level} ${paper.id} is empty`);
+        for (const question of pool) {
+          assert.ok(question.syllabusPath && question.syllabusProfile, `${question.id} lacks syllabus provenance`);
+          assert.ok(question.commandTerm, `${question.id} lacks an IB command term`);
+          assert.ok(question.marks > 0 && question.estimatedMinutes > 0, `${question.id} lacks a valid mark/time budget`);
+          assert.ok(question.markschemePoints?.length, `${question.id} lacks markscheme-first points`);
+          assert.ok(question.commonErrors?.length, `${question.id} lacks misconception controls`);
+          assert.doesNotMatch(question.prompt, /model answer|according to the markscheme/i, `${question.id} leaks its answer`);
+          if (paper.id === "concept") assert.equal(question.responseType, "mcq", `${question.id} is not a concept MCQ`);
+        }
       }
     }
   }
