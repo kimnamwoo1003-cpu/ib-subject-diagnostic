@@ -27,6 +27,23 @@ export const profiles = sqliteTable("profiles", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 
+export const premiumRequests = sqliteTable("premium_requests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userEmail: text("user_email").notNull(),
+  plan: text("plan").notNull().default("premium_access"),
+  amountKrw: integer("amount_krw").notNull(),
+  paymentMethod: text("payment_method").notNull(),
+  payerName: text("payer_name").notNull(),
+  paymentReference: text("payment_reference").notNull(),
+  note: text("note").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  adminNote: text("admin_note").notNull().default(""),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: text("reviewed_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const testAttempts = sqliteTable("test_attempts", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   userEmail: text("user_email").notNull(),
