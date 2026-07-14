@@ -1,11 +1,12 @@
 "use client";
 
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import AdminClient from "./admin/admin-client";
 import { buildUniqueQuestionPool, getAssessmentCriteria, getPapers, getRelevantTopics, Level, Question, subjectCatalog, subjects } from "./data";
 import { BrandLockup, BrandLogo } from "./logo";
 import { buildTestPlan, isSingleTopicPaper, topicLimitFor, type TestMode } from "./test-policy";
 
-type Stage = "loading" | "signin" | "recovery-code" | "account" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "setup" | "test" | "result";
+type Stage = "loading" | "signin" | "recovery-code" | "account" | "premium" | "admin" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "setup" | "test" | "result";
 type Answers = Record<string, string>;
 type TopicScore = { code: string; title: string; percent: number; possible: number; earned: number };
 type CriterionScore = { code: string; name: string; description: string; percent: number; possible: number; earned: number };
@@ -15,9 +16,15 @@ type Attempt = {
   mode: TestMode; percent: number; grade: number; durationSeconds: number; topicBreakdown: TopicScore[]; criteriaBreakdown: CriterionScore[];
   questionIds: string[]; difficultyTrail: string[]; mistakes: Mistake[]; createdAt: string;
 };
+type PremiumRequest = {
+  id: number; amountKrw: number; paymentMethod: "bank_transfer" | "paypal" | "other"; payerName: string;
+  paymentReference: string; note: string; status: "pending" | "approved" | "rejected"; adminNote: string;
+  createdAt: string; reviewedAt: string | null;
+};
 type MeData = {
   user: { email: string; displayName: string; isAdmin: boolean };
   premium: boolean;
+  premiumRequest: PremiumRequest | null;
   selectedSubjects: string[];
   subjectLevels: Record<string, Level>;
   attempts: Attempt[];
@@ -142,6 +149,14 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const [theme, setTheme] = useState<ThemeName>("blue");
   const [levelSaving, setLevelSaving] = useState(false);
   const [levelSaveStatus, setLevelSaveStatus] = useState("");
+  const [premiumAmount, setPremiumAmount] = useState("");
+  const [premiumMethod, setPremiumMethod] = useState<PremiumRequest["paymentMethod"]>("bank_transfer");
+  const [premiumPayer, setPremiumPayer] = useState("");
+  const [premiumReference, setPremiumReference] = useState("");
+  const [premiumNote, setPremiumNote] = useState("");
+  const [premiumBusy, setPremiumBusy] = useState(false);
+  const [premiumMessage, setPremiumMessage] = useState("");
+  const finishGuard = useRef(false);
 
   useEffect(() => {
     const saved = localStorage.getItem("ibsd-theme") as ThemeName | null;
@@ -208,6 +223,19 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     finally { setAuthBusy(false); }
   };
 
+  const submitPremiumRequest = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); setPremiumBusy(true); setPremiumMessage("");
+    try {
+      const response = await apiFetch("/api/premium/request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        amountKrw: premiumAmount, paymentMethod: premiumMethod, payerName: premiumPayer, paymentReference: premiumReference, note: premiumNote,
+      }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "The Premium application could not be submitted.");
+      await loadMe(false); setPremiumMessage("Payment confirmation submitted. Premium will activate after the administrator verifies and accepts it.");
+    } catch (error) { setPremiumMessage(error instanceof Error ? error.message : "The Premium application could not be submitted."); }
+    finally { setPremiumBusy(false); }
+  };
+
   useEffect(() => {
     let active = true;
     apiFetch("/api/me", { cache: "no-store" }).then(async (response) => {
@@ -219,9 +247,17 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
       if (!data) { setStage("signin"); return; }
       setMe(data);
       setStage(data.selectedSubjects?.length === 6 ? "home" : "onboarding");
-    }).catch(() => { if (active) setStage("onboarding"); });
+    }).catch(() => { if (active) { setAuthError("Could not reach the account service. Please reload and try again."); setStage("signin"); } });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (me?.premium || me?.premiumRequest?.status !== "pending") return;
+    let active = true;
+    const refresh = () => apiFetch("/api/me", { cache: "no-store" }).then((response) => response.ok ? response.json() as Promise<MeData> : null).then((data) => { if (active && data) setMe(data); }).catch(() => undefined);
+    const timer = window.setInterval(refresh, 15_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [me?.premium, me?.premiumRequest?.status]);
 
   const subject = useMemo(() => subjects.find((item) => item.id === subjectId) ?? subjects[0], [subjectId]);
   const papers = useMemo(() => getPapers(subject, level), [subject, level]);
@@ -318,6 +354,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     const plan = buildTestPlan(subject, paper, includedTopics.length, premium, testMode, pool);
     const first = pool.find((question) => question.difficultyLevel === 3) ?? pool.find((question) => question.difficulty === "Standard") ?? pool[0];
     if (!first) { setSaveError("No unused questions remain for this exact selection. Choose another topic or paper while the bank refreshes."); return; }
+    finishGuard.current = false;
     setQuestionPool(pool); setTargetQuestionCount(plan.questionCount); setQuestions([first]); setAnswers({}); setCurrent(0); setAdaptiveLevel(3);
     setDifficultyTrail([first.difficulty]); setStartedAt(Date.now()); setTimeLimit(plan.seconds); setTimeLeft(plan.seconds); setPlannedMinutes(plan.plannedMinutes); setSavedResult(null); setSaveError(""); setStage("test"); window.scrollTo({ top: 0 });
   };
@@ -346,7 +383,8 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   };
 
   const finish = async () => {
-    if (stage !== "test") return;
+    if (stage !== "test" || finishGuard.current) return;
+    finishGuard.current = true;
     const comparison = testMode === "monthly" ? me?.attempts.find((attempt) => attempt.mode === "monthly" && attempt.subjectId === subject.id && attempt.paperId === paper.id) ?? null : null;
     const durationSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
     setSavedResult({ percent: result.percent, grade: result.grade, comparison, durationSeconds });
@@ -393,7 +431,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
         <button className={`nav-link ${stage === "mistakes" ? "active" : ""}`} onClick={() => setStage("mistakes")}>Mistake bank</button>
         {me?.premium && <span className="premium-access">★ Premium Access</span>}
         <ThemePicker value={theme} onChange={changeTheme}/>
-        {me?.user.isAdmin && <a className="admin-link" href={isStaticPages() ? `${SITES_ORIGIN}/admin` : "/admin"}>Admin</a>}
+        {me?.user.isAdmin && <button className={`admin-link ${stage === "admin" ? "active" : ""}`} type="button" onClick={() => setStage("admin")}>Admin</button>}
         <span className="account-identity" title={me?.user.email}>{me?.user.email}</span>
         <button className={`account-link ${stage === "account" ? "active" : ""}`} type="button" onClick={() => { setIssuedRecoveryCode(""); setAuthError(""); setStage("account"); }}>Account</button>
         <button className="signout-link" type="button" onClick={() => void logOut()}>Log out</button>
@@ -412,12 +450,14 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
         </button>;
       })}</div>
 
-      {me?.premium ? <PremiumDashboard attempts={me.attempts} onReports={() => setStage("reports")} onMistakes={() => setStage("mistakes")} onStatus={() => setStage("status")} /> : <section className="premium-promo"><div><span className="eyebrow">{freeLocked ? "FREE TEST USED" : "PREMIUM"}</span><h2>{freeLocked ? "Your free diagnostic is complete" : "Unlock your full progress system"}</h2><p>{freeLocked ? "All further subject tests are now locked until an administrator enables Premium." : "Premium appears automatically after an administrator approves your account."}</p></div><ul><li>Unlimited adaptive retakes with different questions</li><li>Timed monthly tests with before/after comparison</li><li>Current-status map, revision queue and mistake bank</li></ul></section>}
+      {me?.premium ? <PremiumDashboard attempts={me.attempts} onReports={() => setStage("reports")} onMistakes={() => setStage("mistakes")} onStatus={() => setStage("status")} /> : <section className="premium-promo"><div><span className="eyebrow">{me?.premiumRequest?.status === "pending" ? "PAYMENT UNDER REVIEW" : freeLocked ? "FREE TEST USED" : "PREMIUM"}</span><h2>{me?.premiumRequest?.status === "pending" ? "Your Premium request is pending" : freeLocked ? "Your free diagnostic is complete" : "Unlock your full progress system"}</h2><p>{me?.premiumRequest?.status === "pending" ? "The administrator will verify your payment reference. Premium activates only after acceptance." : me?.premiumRequest?.status === "rejected" ? `Your previous request was not accepted${me.premiumRequest.adminNote ? `: ${me.premiumRequest.adminNote}` : ". You can submit corrected payment details."}` : freeLocked ? "All further subject tests are now locked until Premium is approved." : "Submit your payment confirmation for administrator review."}</p><button className="premium-apply-button" onClick={() => { setPremiumMessage(""); setStage("premium"); }}>{me?.premiumRequest?.status === "pending" ? "View request status" : me?.premiumRequest?.status === "rejected" ? "Resubmit payment details" : "Apply for Premium"} <span>→</span></button></div><ul><li>Unlimited adaptive retakes with different questions</li><li>Timed monthly tests with before/after comparison</li><li>Current-status map, revision queue and mistake bank</li></ul></section>}
     </div>}
 
     {stage === "reports" && <ReportsView premium={Boolean(me?.premium)} attempts={me?.attempts ?? []} onBack={goHome} />}
     {stage === "status" && <StatusView premium={Boolean(me?.premium)} attempts={me?.attempts ?? []} onBack={goHome} />}
     {stage === "mistakes" && <MistakeBank premium={Boolean(me?.premium)} mistakes={allMistakes} onBack={goHome} />}
+    {stage === "premium" && <PremiumApplication request={me?.premiumRequest ?? null} message={premiumMessage} amount={premiumAmount} method={premiumMethod} payer={premiumPayer} reference={premiumReference} note={premiumNote} busy={premiumBusy} onAmount={setPremiumAmount} onMethod={setPremiumMethod} onPayer={setPremiumPayer} onReference={setPremiumReference} onNote={setPremiumNote} onSubmit={submitPremiumRequest} onRefresh={async () => { setPremiumMessage(""); await loadMe(false); }} onBack={goHome}/>}
+    {stage === "admin" && me?.user.isAdmin && <AdminClient adminName={me.user.displayName} embedded onBack={goHome}/>}
     {stage === "account" && <div className="page-container report-page"><button className="back-link" onClick={goHome}>← Dashboard</button><div className="report-heading"><span className="eyebrow">ACCOUNT SECURITY</span><h1>Password recovery</h1><p>Create a new recovery code while you are signed in. Generating one immediately invalidates the previous code.</p></div><section className="account-security-card"><div><strong>Recovery code</strong><p>Keep it outside this site, such as in a password manager. Anyone with the code and your username can reset your password.</p></div>{issuedRecoveryCode ? <><code>{issuedRecoveryCode}</code><span className="recovery-warning">This is shown once. Save it before leaving this page.</span></> : <button className="primary-button" disabled={authBusy} onClick={() => void generateRecoveryCode()}>{authBusy ? "Creating…" : "Create new recovery code"} <span>→</span></button>}{authError && <div className="auth-error" role="alert">{authError}</div>}</section></div>}
 
     {stage === "setup" && <div className="page-container setup-page" style={{ "--subject": subject.color, "--subject-soft": subject.softColor } as React.CSSProperties}>
@@ -477,6 +517,19 @@ function SubjectOnboarding({ name, current, currentLevels, onSaved }: { name: st
   };
   const replaceSubject = (oldId: string) => { if (!pendingSubject) return; const nextId = pendingSubject; setSelected((items) => items.map((id) => id === oldId ? nextId : id)); setLevels((items) => ({ ...items, [nextId]: items[nextId] ?? defaultLevel(nextId) })); setPendingSubject(null); };
   return <main className="onboarding-page"><div className="onboarding-header"><BrandLogo/><div><span className="eyebrow">SET UP YOUR DASHBOARD</span><h1>Choose your six IB subjects, {name}.</h1><p>Select each course and set its SL or HL level here. The saved level becomes the default whenever you open that subject.</p></div><div className="selection-counter"><strong>{selected.length}/6</strong><span>selected</span></div></div><div className="catalog-groups">{groups.map((group) => <section key={group}><h2>{group}</h2><div className="catalog-grid">{subjectCatalog.filter((subject) => subject.group === group).map((subject) => { const active = selected.includes(subject.id); const status = subject.availability ?? (subject.testAvailable ? "available" : "planned"); const availableLevels = (["SL", "HL"] as Level[]).filter((item) => subject.levels.includes(item)); return <div key={subject.id} className={`catalog-card ${active ? "selected" : ""}`}><button type="button" className="catalog-main" onClick={() => addOrRemove(subject.id)}><span className="catalog-check">{active ? "✓" : ""}</span><span><strong>{subject.name}</strong><small>{active ? `${levels[subject.id] ?? defaultLevel(subject.id)} selected` : subject.levels}</small></span><em className={status === "available" ? "available" : status === "unavailable" ? "unavailable" : "soon"}>{status === "available" ? "Test available" : status === "unavailable" ? "Unavailable" : "Coming next"}</em></button>{active && <div className="catalog-levels" aria-label={`${subject.name} course level`}>{availableLevels.map((item) => <button type="button" key={item} className={levels[subject.id] === item ? "active" : ""} onClick={() => setLevels((currentMap) => ({ ...currentMap, [subject.id]: item }))}>{item}</button>)}</div>}</div>; })}</div></section>)}</div>{saveError && <div className="inline-error">{saveError}</div>}<div className="onboarding-save"><div><strong>Choose exactly six subjects and levels</strong><span>You can change both later from the dashboard.</span></div><button className="primary-button" disabled={selected.length !== 6 || saving} onClick={() => void save()}>{saving ? "Saving…" : "Save my subjects"} <span>→</span></button></div>{pendingSubject && <div className="subject-swap-backdrop" role="dialog" aria-modal="true" aria-label="Replace a subject"><div className="subject-swap"><span className="eyebrow">REPLACE A SUBJECT</span><h2>Add {subjectCatalog.find((item) => item.id === pendingSubject)?.name}</h2><p>Choose which current subject to replace.</p><div>{selected.map((id) => <button type="button" key={id} onClick={() => replaceSubject(id)}>{subjectCatalog.find((item) => item.id === id)?.name ?? id}<span>Replace →</span></button>)}</div><button type="button" className="secondary-button" onClick={() => setPendingSubject(null)}>Cancel</button></div></div>}</main>;
+}
+
+export function PremiumApplication({ request, message, amount, method, payer, reference, note, busy, onAmount, onMethod, onPayer, onReference, onNote, onSubmit, onRefresh, onBack }: {
+  request: PremiumRequest | null; message: string; amount: string; method: PremiumRequest["paymentMethod"]; payer: string; reference: string; note: string; busy: boolean;
+  onAmount: (value: string) => void; onMethod: (value: PremiumRequest["paymentMethod"]) => void; onPayer: (value: string) => void; onReference: (value: string) => void; onNote: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void; onRefresh: () => Promise<void>; onBack: () => void;
+}) {
+  const pending = request?.status === "pending";
+  return <div className="page-container report-page premium-application-page"><button className="back-link" onClick={onBack}>← Dashboard</button><div className="report-heading"><span className="eyebrow">PREMIUM APPLICATION</span><h1>Submit payment for review</h1><p>Confirm the current price and payment destination with the administrator before paying, then enter the matching details below. This form records a payment claim for manual verification; it does not charge a card or confirm that money was received.</p></div>
+    {request && <section className={`request-summary ${request.status}`}><div><span>LATEST REQUEST</span><strong>{request.status === "pending" ? "Waiting for administrator review" : request.status === "approved" ? "Payment accepted" : "Payment not accepted"}</strong><p>₩{request.amountKrw.toLocaleString()} · {request.paymentMethod.replace("_", " ")} · reference {request.paymentReference}</p>{request.adminNote && <small>Administrator note: {request.adminNote}</small>}</div><b>{request.status}</b></section>}
+    {pending ? <section className="pending-actions"><p>The administrator must match your payer name, amount and reference with the external payment record before accepting it.</p><button className="secondary-button" disabled={busy} onClick={() => void onRefresh()}>{busy ? "Refreshing…" : "Refresh approval status"}</button></section> : <form className="premium-form" onSubmit={onSubmit}><div className="payment-safety"><strong>Before submitting</strong><ul><li>Complete the payment outside this site after confirming the price and destination.</li><li>Use the exact payer name and reference shown by the payment provider.</li><li>Never enter a card number, banking password, security code or full bank-account number here.</li><li>Premium remains locked until the administrator accepts the request.</li></ul></div><div className="premium-form-grid"><label><span>Amount paid (KRW)</span><input inputMode="numeric" value={amount} onChange={(event) => onAmount(event.target.value.replace(/[^0-9]/g, ""))} placeholder="For example, 10000" required/></label><label><span>Payment method</span><select value={method} onChange={(event) => onMethod(event.target.value as PremiumRequest["paymentMethod"])}><option value="bank_transfer">Bank transfer</option><option value="paypal">PayPal</option><option value="other">Other</option></select></label><label><span>Payer name</span><input value={payer} onChange={(event) => onPayer(event.target.value)} minLength={2} maxLength={80} placeholder="Name used for payment" required/></label><label><span>Payment reference</span><input value={reference} onChange={(event) => onReference(event.target.value)} minLength={4} maxLength={120} placeholder="Transfer memo or transaction ID" required/></label><label className="full"><span>Note to administrator (optional)</span><textarea value={note} onChange={(event) => onNote(event.target.value)} maxLength={500} rows={4} placeholder="Add any detail needed to match the payment."/></label></div><button className="primary-button" disabled={busy}>{busy ? "Submitting…" : "Submit for payment review"} <span>→</span></button></form>}
+    {message && <div className="premium-message" role="status">{message}</div>}
+  </div>;
 }
 
 function PremiumDashboard({ attempts, onReports, onMistakes, onStatus }: { attempts: Attempt[]; onReports: () => void; onMistakes: () => void; onStatus: () => void }) {
