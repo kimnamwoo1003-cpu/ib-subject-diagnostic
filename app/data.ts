@@ -21,6 +21,8 @@ export type Topic = {
   concepts: string[];
   application: string;
   misconception: string;
+  path?: string;
+  profile?: string;
 };
 
 export type Subject = {
@@ -745,15 +747,26 @@ function conceptQuestions(subject: Subject, level: Level, paper: Paper, topic: T
     `The claim is a definition and needs no evidence`,
     `The claim can be accepted whenever two quantities change together`,
   ], (variant + 1) % 4);
+  const syllabusPath = topic.path ?? `${topic.code} ${topic.title}`;
+  const syllabusProfile = topic.profile ?? `${subject.id}_${level}_concept_check`;
+  const difficultyLevel = ((variant % 5) + 1) as 1 | 2 | 3 | 4 | 5;
   return [
     { id: `${subject.id}-${level}-${paper.id}-${topic.code}-concept-${variant}-a`, topicCode: topic.code, topicTitle: topic.title,
       prompt: `Which statement gives the most complete explanation of ${topic.title} in this context? Focus on ${variantLenses[variant % variantLenses.length]}.`,
       responseType: "mcq", choices: first.choices, correctIndex: first.correctIndex, modelAnswer: topic.definition, keywords: topic.concepts,
-      marks: 1, skill: "Concept depth", difficulty: variant % 3 === 0 ? "Foundation" : variant % 3 === 1 ? "Standard" : "Challenge", format: "concept-mcq", variant },
+      marks: 1, skill: "Concept depth", difficulty: variant % 3 === 0 ? "Foundation" : variant % 3 === 1 ? "Standard" : "Challenge", format: "concept-mcq", variant,
+      commandTerm: "Identify", syllabusPath, syllabusProfile, difficultyLevel, estimatedMinutes: 2, section: paper.name,
+      markschemePoints: [topic.definition, "Reject an option that gives only an example, absolute claim or correlation without the required mechanism."],
+      commonErrors: [topic.misconception, "selects a related definition without the required relationship"],
+    },
     { id: `${subject.id}-${level}-${paper.id}-${topic.code}-concept-${variant}-b`, topicCode: topic.code, topicTitle: topic.title,
       prompt: `A student writes, “${topic.misconception}.” Which evaluation best identifies the conceptual gap?`,
       responseType: "mcq", choices: second.choices, correctIndex: second.correctIndex, modelAnswer: second.choices[second.correctIndex], keywords: topic.concepts,
-      marks: 1, skill: "Missing knowledge", difficulty: variant % 3 === 0 ? "Standard" : variant % 3 === 1 ? "Challenge" : "Foundation", format: "concept-mcq", variant },
+      marks: 1, skill: "Missing knowledge", difficulty: variant % 3 === 0 ? "Standard" : variant % 3 === 1 ? "Challenge" : "Foundation", format: "concept-mcq", variant,
+      commandTerm: "Evaluate", syllabusPath, syllabusProfile, difficultyLevel, estimatedMinutes: 2, section: paper.name,
+      markschemePoints: [`Identifies why “${topic.misconception}” is incomplete or incorrect.`, topic.definition],
+      commonErrors: ["accepts an absolute misconception", "states that evidence is unnecessary"],
+    },
   ];
 }
 
