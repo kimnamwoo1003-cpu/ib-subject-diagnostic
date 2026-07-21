@@ -4,11 +4,17 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
-test("downloadable papers separate preparation, timed work and answer checking", async () => {
+test("paper and MCQ tests support both online and PDF delivery", async () => {
   const source = await readFile(new URL("app/diagnostic-client.tsx", root), "utf8");
   assert.match(source, /type Stage = .*"ready".*"paper".*"answers"/);
+  assert.match(source, /type DeliveryMode = "online" \| "pdf"/);
+  assert.match(source, /Take online/);
+  assert.match(source, /Use PDF/);
+  assert.match(source, /Start online exam/);
+  assert.match(source, /Start PDF exam/);
   assert.match(source, /Download PDF/);
-  assert.match(source, /Start exam/);
+  assert.match(source, /setStage\(nextMode === "pdf" \? "paper" : "test"\)/);
+  assert.match(source, /deliveryMode: nextMode/);
   assert.match(source, /I finished — enter answers/);
   assert.match(source, /Check answers & finish/);
   assert.match(source, /setStartedAt\(Date\.now\(\)\)/);

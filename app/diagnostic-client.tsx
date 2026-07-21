@@ -7,6 +7,7 @@ import { BrandLockup, BrandLogo } from "./logo";
 import { buildTestPlan, isSingleTopicPaper, topicLimitFor, type TestMode } from "./test-policy";
 
 type Stage = "loading" | "signin" | "recovery-code" | "account" | "premium" | "admin" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "setup" | "ready" | "paper" | "test" | "answers" | "result";
+type DeliveryMode = "online" | "pdf";
 type Answers = Record<string, string>;
 type TopicScore = { code: string; title: string; percent: number; possible: number; earned: number };
 type CriterionScore = { code: string; name: string; description: string; percent: number; possible: number; earned: number };
@@ -172,6 +173,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const [levelSaveStatus, setLevelSaveStatus] = useState("");
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfDownloaded, setPdfDownloaded] = useState(false);
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("online");
   const [premiumAmount, setPremiumAmount] = useState("");
   const [premiumMethod, setPremiumMethod] = useState<PremiumRequest["paymentMethod"]>("bank_transfer");
   const [premiumPayer, setPremiumPayer] = useState("");
@@ -382,14 +384,17 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     if (!first) { setSaveError("No unused questions remain for this exact selection. Choose another topic or paper while the bank refreshes."); return; }
     const prepared = downloadablePaper ? selectPreparedQuestions(pool, plan.questionCount, includedTopics.map((topic) => topic.code)) : [first];
     setQuestionPool(pool); setTargetQuestionCount(downloadablePaper ? prepared.length : plan.questionCount); setQuestions(prepared); setAnswers({}); setCurrent(0); setAdaptiveLevel(3);
-    setDifficultyTrail(prepared.map((question) => question.difficulty)); setStartedAt(0); setPaperDuration(0); setTimeLimit(plan.seconds); setTimeLeft(plan.seconds); setPlannedMinutes(plan.plannedMinutes); setSavedResult(null); setSaveError(""); setPdfDownloaded(false); finishGuard.current = false; setStage("ready");
+    setDifficultyTrail(prepared.map((question) => question.difficulty)); setStartedAt(0); setPaperDuration(0); setTimeLimit(plan.seconds); setTimeLeft(plan.seconds); setPlannedMinutes(plan.plannedMinutes); setSavedResult(null); setSaveError(""); setPdfDownloaded(false); setDeliveryMode("online"); finishGuard.current = false; setStage("ready");
     logActivity("test_prepared", { topicCodes: includedTopics.map((topic) => topic.code), questionCount: downloadablePaper ? prepared.length : plan.questionCount, downloadable: downloadablePaper }); window.scrollTo({ top: 0 });
   };
 
-  const startPreparedTest = () => {
+  const startPreparedTest = (mode: DeliveryMode = "online") => {
+    const nextMode = downloadablePaper ? mode : "online";
+    if (nextMode === "pdf" && !pdfDownloaded) { setSaveError("Download the question paper before starting the PDF exam."); return; }
+    setDeliveryMode(nextMode);
     setStartedAt(Date.now()); setTimeLeft(timeLimit); setPaperDuration(0); finishGuard.current = false;
-    setStage(downloadablePaper ? "paper" : "test");
-    logActivity("test_started", { questionCount: targetQuestionCount, seconds: timeLimit, downloaded: pdfDownloaded });
+    setStage(nextMode === "pdf" ? "paper" : "test");
+    logActivity("test_started", { questionCount: targetQuestionCount, seconds: timeLimit, deliveryMode: nextMode, downloaded: pdfDownloaded });
     window.scrollTo({ top: 0 });
   };
 
@@ -526,7 +531,25 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
       {saveError && <div className="inline-error">{saveError}</div>}<div className="start-panel"><div><strong>{subject.name} {level} · {paper.name}</strong><span>{includedTopics.length} topics · {downloadablePaper ? "downloadable question paper" : paper.id === "concept" ? "timed adaptive concept MCQ" : testMode === "monthly" ? "timed monthly progress test" : "timed adaptive diagnostic"} · maximum 60 minutes</span></div><button className="primary-button" disabled={!includedTopics.length || freeLocked || levelSaving} onClick={prepareTest}>{levelSaving ? "Saving level…" : freeLocked ? "Free test already used" : "Prepare test"} <span>→</span></button></div>
     </div>}
 
-    {stage === "ready" && <div className="page-container ready-page" style={{ "--subject": subject.color, "--subject-soft": subject.softColor } as React.CSSProperties}><button className="back-link" onClick={() => setStage("setup")}>← Test setup</button><div className="ready-hero"><span className="eyebrow">TEST READY</span><h1>{subject.name} {level}</h1><p>{paper.name} · {rangeLabel}</p><div className="ready-summary"><div><strong>{targetQuestionCount}</strong><span>questions</span></div><div><strong>{plannedMinutes}</strong><span>minutes</span></div><div><strong>{questions.reduce((sum, question) => sum + question.marks, 0)}</strong><span>marks</span></div></div></div><section className="ready-steps"><article><span>1</span><div><strong>{downloadablePaper ? "Download the question paper" : "Check your setup"}</strong><p>{downloadablePaper ? "The PDF contains the complete original paper, stimuli, diagrams, marks and answer space. It never includes the markscheme." : "The timer has not started. When ready, begin the online adaptive test."}</p></div>{downloadablePaper && <button className="secondary-button" disabled={pdfBusy} onClick={() => void downloadPaper()}>{pdfBusy ? "Creating PDF…" : pdfDownloaded ? "Download PDF again" : "Download PDF"}</button>}</article><article><span>2</span><div><strong>Start only when ready</strong><p>The {formatTime(timeLimit)} timer begins only when you press Start exam. {downloadablePaper ? "Solve the downloaded paper, then open the answer-check section." : "Answer directly on this site."}</p></div><button className="primary-button" disabled={downloadablePaper && !pdfDownloaded} onClick={startPreparedTest}>{downloadablePaper && !pdfDownloaded ? "Download PDF first" : "Start exam"} <span>→</span></button></article></section>{saveError && <div className="inline-error">{saveError}</div>}<PrintablePaper id="downloadable-question-paper" subjectName={subject.name} level={level} paperName={paper.name} minutes={plannedMinutes} questions={questions}/></div>}
+    {stage === "ready" && <div className="page-container ready-page" style={{ "--subject": subject.color, "--subject-soft": subject.softColor } as React.CSSProperties}>
+      <button className="back-link" onClick={() => setStage("setup")}>← Test setup</button>
+      <div className="ready-hero"><span className="eyebrow">TEST READY</span><h1>{subject.name} {level}</h1><p>{paper.name} · {rangeLabel}</p><div className="ready-summary"><div><strong>{targetQuestionCount}</strong><span>questions</span></div><div><strong>{plannedMinutes}</strong><span>minutes</span></div><div><strong>{questions.reduce((sum, question) => sum + question.marks, 0)}</strong><span>marks</span></div></div></div>
+      {downloadablePaper ? <section className="delivery-section">
+        <div className="delivery-heading"><span className="eyebrow">CHOOSE YOUR FORMAT</span><h2>How do you want to take this test?</h2><p>Both formats use the same questions, marks and time limit.</p></div>
+        <div className="delivery-grid">
+          <article className={deliveryMode === "online" ? "selected" : ""}>
+            <button type="button" className="delivery-select" onClick={() => { setDeliveryMode("online"); setSaveError(""); }}><span className="delivery-icon">⌨</span><strong>Take online</strong><p>Read every stimulus and enter answers directly on this site. The timer and question navigation stay visible.</p><em>{deliveryMode === "online" ? "Selected" : "Select online"}</em></button>
+            <button className="primary-button" onClick={() => startPreparedTest("online")}>Start online exam <span>→</span></button>
+          </article>
+          <article className={deliveryMode === "pdf" ? "selected" : ""}>
+            <button type="button" className="delivery-select" onClick={() => { setDeliveryMode("pdf"); setSaveError(""); }}><span className="delivery-icon">PDF</span><strong>Use PDF</strong><p>Download and solve the printable paper first. When finished, return to enter answers for checking.</p><em>{pdfDownloaded ? "PDF ready" : deliveryMode === "pdf" ? "Selected" : "Select PDF"}</em></button>
+            <div className="delivery-actions"><button className="secondary-button" disabled={pdfBusy} onClick={() => { setDeliveryMode("pdf"); void downloadPaper(); }}>{pdfBusy ? "Creating PDF…" : pdfDownloaded ? "Download again" : "Download PDF"}</button><button className="primary-button" disabled={!pdfDownloaded} onClick={() => startPreparedTest("pdf")}>{pdfDownloaded ? "Start PDF exam" : "Download first"} <span>→</span></button></div>
+          </article>
+        </div>
+        <p className="delivery-timer-note">The {formatTime(timeLimit)} timer starts only after you choose a format and press its start button.</p>
+      </section> : <section className="ready-steps"><article><span>1</span><div><strong>Start only when ready</strong><p>The timer has not started. Answer directly on this site; the {formatTime(timeLimit)} timer begins when you press Start online exam.</p></div><button className="primary-button" onClick={() => startPreparedTest("online")}>Start online exam <span>→</span></button></article></section>}
+      {saveError && <div className="inline-error">{saveError}</div>}<PrintablePaper id="downloadable-question-paper" subjectName={subject.name} level={level} paperName={paper.name} minutes={plannedMinutes} questions={questions}/>
+    </div>}
 
     {stage === "paper" && <div className="paper-session page-container" style={{ "--subject": subject.color, "--subject-soft": subject.softColor } as React.CSSProperties}><button id="timed-open-answers" className="sr-only" onClick={() => openAnswerEntry(true)}>Open answers</button><span className="eyebrow">PDF EXAM IN PROGRESS</span><h1>{subject.name} {level} · {paper.name}</h1><div className={`paper-timer ${timeLeft < 300 ? "urgent" : ""}`}><span>TIME LEFT</span><strong>{formatTime(timeLeft)}</strong><div><i style={{ width: `${Math.max(0, (timeLeft / Math.max(timeLimit, 1)) * 100)}%` }}/></div></div><section><strong>Work from your downloaded question paper.</strong><p>Your answers are not shown on screen during the timed session. When finished, stop the timer and enter your responses for checking. If time reaches zero, the answer-check section opens automatically.</p><button className="secondary-button" onClick={() => void downloadPaper()}>Download paper again</button></section><button className="primary-button finish-paper" onClick={() => openAnswerEntry(false)}>I finished — enter answers <span>→</span></button></div>}
 
