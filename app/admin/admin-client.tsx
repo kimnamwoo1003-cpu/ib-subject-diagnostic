@@ -14,76 +14,72 @@ const adminFetch = (path: string, init: RequestInit = {}) => {
   return fetch(`${isStaticPages() ? SITES_ORIGIN : ""}${path}`, { ...init, headers });
 };
 
-type PremiumRequest = {
-  id: number; amountKrw: number; paymentMethod: string; payerName: string; paymentReference: string;
-  note: string; status: "pending" | "approved" | "rejected"; adminNote: string; createdAt: string; reviewedAt: string | null;
-};
+type Activity = { id: number; action: string; subjectId: string | null; level: string | null; paperId: string | null; detail: Record<string, unknown>; createdAt: string };
+type SubjectProgress = { subjectId: string; attempts: number; averagePercent: number; latestPercent: number; latestLevel: string; latestPaper: string; lastTestAt: string; topics: Array<{ code: string; title: string; percent: number }> };
+type PremiumRequest = { id: number; amountKrw: number; paymentMethod: string; payerName: string; paymentReference: string; note: string; status: "pending" | "approved" | "rejected"; adminNote: string; createdAt: string; reviewedAt: string | null };
 type UserRow = {
-  email: string; displayName: string; premium: boolean; selectedSubjects: string[]; subjectLevels: Record<string, "SL" | "HL">;
-  premiumRequest: PremiumRequest | null; createdAt: string; updatedAt: string;
+  email: string; displayName: string; premium: boolean; selectedSubjects: string[]; subjectLevels: Record<string, "SL" | "HL">; createdAt: string; updatedAt: string;
+  progress: { attemptCount: number; averagePercent: number | null; latestAttempt: null | { subjectId: string; subjectName: string; level: string; paperName: string; percent: number; createdAt: string }; lastActivity: Activity | null; recentActivities: Activity[]; subjects: SubjectProgress[] };
+  premiumRequest: PremiumRequest | null;
 };
 
-const paymentMethodName = (value: string) => value === "bank_transfer" ? "Bank transfer" : value === "paypal" ? "PayPal" : "Other";
+const actionLabel: Record<string, string> = {
+  subject_opened: "Opened subject", test_prepared: "Prepared test", pdf_downloaded: "Downloaded PDF",
+  test_started: "Started test", answer_entry_opened: "Opened answer check", test_submitted: "Submitted test",
+};
+const subjectName = (id?: string | null) => subjectCatalog.find((subject) => subject.id === id)?.name ?? id ?? "General";
 
 export default function AdminClient({ adminName, embedded = false, onBack }: { adminName: string; embedded?: boolean; onBack?: () => void }) {
   const [users, setUsers] = useState<UserRow[]>([]);
+  const [view, setView] = useState<"requests" | "progress" | "accounts">("requests");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState("");
-  const [reviewNotes, setReviewNotes] = useState<Record<number, string>>({});
 
+  const reload = () => {
+    setLoading(true);
+    adminFetch("/api/admin/users", { cache: "no-store" }).then((response) => response.json()).then((data: { users?: UserRow[]; error?: string }) => {
+      if (data.error) setMessage(data.error);
+      setUsers(data.users ?? []); setLoading(false);
+    }).catch(() => { setMessage("Admin data could not be loaded."); setLoading(false); });
+  };
   useEffect(() => {
     let active = true;
-    adminFetch("/api/admin/users", { cache: "no-store" }).then(async (response) => {
-      const data = await response.json() as { users?: UserRow[]; error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Admin account list could not be loaded.");
-      return data.users ?? [];
-    }).then((rows) => { if (active) setUsers(rows); }).catch((error: unknown) => { if (active) setMessage(error instanceof Error ? error.message : "Admin account list could not be loaded."); }).finally(() => { if (active) setLoading(false); });
+    adminFetch("/api/admin/users", { cache: "no-store" }).then((response) => response.json()).then((data: { users?: UserRow[]; error?: string }) => {
+      if (!active) return;
+      if (data.error) setMessage(data.error);
+      setUsers(data.users ?? []); setLoading(false);
+    }).catch(() => { if (active) { setMessage("Admin data could not be loaded."); setLoading(false); } });
     return () => { active = false; };
   }, []);
   const visibleUsers = useMemo(() => users.filter((user) => `${user.displayName} ${user.email} ${user.premiumRequest?.payerName ?? ""} ${user.premiumRequest?.paymentReference ?? ""}`.toLowerCase().includes(query.toLowerCase())), [users, query]);
+  const pending = visibleUsers.filter((user) => user.premiumRequest?.status === "pending");
 
   const setPremium = async (target: UserRow, premium: boolean) => {
     setSaving(target.email); setMessage("");
     const response = await adminFetch("/api/admin/users", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: target.email, premium }) });
-    const data = await response.json() as { error?: string };
-    if (response.ok) {
-      setUsers((rows) => rows.map((row) => row.email === target.email ? { ...row, premium } : row));
-      setMessage(`${target.displayName} now has ${premium ? "Premium" : "Free"} access.`);
-    } else setMessage(data.error ?? "The account could not be updated.");
+    if (response.ok) { setUsers((rows) => rows.map((row) => row.email === target.email ? { ...row, premium } : row)); setMessage(`${target.displayName} now has ${premium ? "Premium" : "Free"} access.`); }
+    else { const data = await response.json() as { error?: string }; setMessage(data.error ?? "The account could not be updated."); }
     setSaving(null);
   };
 
-  const reviewRequest = async (target: UserRow, action: "approve" | "reject") => {
+  const review = async (target: UserRow, decision: "approve" | "reject") => {
     if (!target.premiumRequest) return;
     setSaving(target.email); setMessage("");
-    const response = await adminFetch("/api/admin/users", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId: target.premiumRequest.id, action, adminNote: reviewNotes[target.premiumRequest.id] ?? "" }) });
-    const data = await response.json() as { premiumRequest?: PremiumRequest; premium?: boolean; error?: string };
-    if (response.ok && data.premiumRequest) {
-      setUsers((rows) => rows.map((row) => row.email === target.email ? { ...row, premium: action === "approve" ? true : row.premium, premiumRequest: data.premiumRequest! } : row));
-      setMessage(`${target.displayName}'s payment was ${action === "approve" ? "accepted and Premium was enabled" : "rejected"}.`);
-    } else setMessage(data.error ?? "The payment review could not be completed.");
+    const response = await adminFetch("/api/admin/users", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ requestId: target.premiumRequest.id, decision }) });
+    if (response.ok) { setMessage(`${target.displayName}'s payment was ${decision === "approve" ? "accepted and Premium activated" : "rejected"}.`); reload(); }
+    else { const data = await response.json() as { error?: string }; setMessage(data.error ?? "The request could not be reviewed."); }
     setSaving(null);
   };
-
-  const pendingCount = users.filter((user) => user.premiumRequest?.status === "pending").length;
   return <div className={`admin-page ${embedded ? "embedded-admin" : ""}`}>
     {!embedded && <header className="admin-topbar"><Link className="brand" href="/"><BrandLockup light/></Link><div><span>Signed in as {adminName}</span><Link className="quiet-button" href="/">Student site</Link></div></header>}
     <div className="admin-container">
       {embedded && <button className="back-link" onClick={onBack}>← Dashboard</button>}
-      <section className="admin-hero"><div><span className="eyebrow">ADMIN CONSOLE</span><h1>Premium reviews</h1><p>Verify the payment reference outside this site, then approve or reject the request. Premium starts only after approval.</p></div><div className="admin-stats"><div><strong>{users.length}</strong><span>Accounts</span></div><div><strong>{pendingCount}</strong><span>Pending</span></div><div><strong>{users.filter((user) => user.premium).length}</strong><span>Premium</span></div><div><strong>{users.filter((user) => user.selectedSubjects.length === 6).length}</strong><span>Set up</span></div></div></section>
-      <section className="admin-controls"><label><span>Search accounts or payment reference</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Username, payer or reference" /></label>{message && <p role="status">{message}</p>}</section>
-      <section className="admin-table"><div className="admin-row head"><span>Account</span><span>Six subjects</span><span>Payment review</span><span>Access</span></div>{loading ? <div className="admin-empty">Loading accounts…</div> : visibleUsers.length ? visibleUsers.map((user) => {
-        const request = user.premiumRequest;
-        return <div className="admin-row" key={user.email}>
-          <span><strong>{user.displayName}</strong><small>{user.email}</small><b className={user.premium ? "status-premium" : "status-free"}>{user.premium ? "Premium" : "Free"}</b></span>
-          <span className="subject-chips">{user.selectedSubjects.length ? user.selectedSubjects.map((id) => <em key={id}>{subjectCatalog.find((subject) => subject.id === id)?.name ?? id} {user.subjectLevels?.[id] ?? ""}</em>) : <small>Not selected yet</small>}</span>
-          <span className="payment-review">{request ? <><b className={`request-status ${request.status}`}>{request.status}</b><strong>₩{request.amountKrw.toLocaleString()} · {paymentMethodName(request.paymentMethod)}</strong><small>Payer: {request.payerName}</small><code>{request.paymentReference}</code>{request.note && <small>Student note: {request.note}</small>}{request.status === "pending" ? <><input value={reviewNotes[request.id] ?? ""} onChange={(event) => setReviewNotes((notes) => ({ ...notes, [request.id]: event.target.value }))} placeholder="Optional admin note" maxLength={500}/><div className="review-actions"><button disabled={saving === user.email} onClick={() => void reviewRequest(user, "approve")}>Accept payment</button><button disabled={saving === user.email} onClick={() => void reviewRequest(user, "reject")}>Reject</button></div></> : request.adminNote && <small>Admin note: {request.adminNote}</small>}</> : <small>No Premium application</small>}</span>
-          <span><button className={`access-toggle ${user.premium ? "on" : ""}`} disabled={saving === user.email} onClick={() => void setPremium(user, !user.premium)}><i/><strong>{saving === user.email ? "Updating…" : user.premium ? "Premium enabled" : "Manual grant"}</strong></button><small>Manual control is available for support cases.</small></span>
-        </div>;
-      }) : <div className="admin-empty">No matching accounts.</div>}</section>
-      <section className="admin-note"><strong>Safe review workflow</strong><p>The site does not process cards or confirm money automatically. Match the payer, amount and reference against your payment provider first. Accepting a pending request enables Premium; rejecting it leaves the account Free and allows the student to submit a corrected application.</p></section>
+      <section className="admin-hero"><div><span className="eyebrow">ADMIN CONSOLE</span><h1>Premium reviews & student progress</h1><p>Review Premium payments and see each learner&apos;s latest test progress without exposing their answers.</p></div><div className="admin-stats"><div><strong>{users.length}</strong><span>Accounts</span></div><div><strong>{pending.length}</strong><span>Pending</span></div><div><strong>{users.reduce((sum, user) => sum + user.progress.attemptCount, 0)}</strong><span>Tests</span></div></div></section>
+      <section className="admin-controls"><div className="admin-tabs"><button className={view === "requests" ? "active" : ""} onClick={() => setView("requests")}>Payment requests</button><button className={view === "progress" ? "active" : ""} onClick={() => setView("progress")}>Student progress</button><button className={view === "accounts" ? "active" : ""} onClick={() => setView("accounts")}>Account access</button></div><label><span>Search accounts or payment reference</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Username, payer or reference" /></label>{message && <p>{message}</p>}</section>
+      {loading ? <div className="admin-empty">Loading admin data…</div> : view === "requests" ? <section className="request-grid">{pending.length ? pending.map((user) => { const request = user.premiumRequest!; return <article className="payment-card" key={request.id}><div><span>PENDING VERIFICATION</span><h2>{user.displayName}</h2><small>Submitted {new Date(request.createdAt).toLocaleString("en-GB")}</small></div><dl><div><dt>Amount paid</dt><dd>₩{request.amountKrw.toLocaleString()}</dd></div><div><dt>Method</dt><dd>{request.paymentMethod.replace("_", " ")}</dd></div><div><dt>Payer</dt><dd>{request.payerName}</dd></div><div><dt>Reference</dt><dd>{request.paymentReference}</dd></div></dl>{request.note && <p>{request.note}</p>}<div className="payment-actions"><button className="secondary-button" disabled={saving === user.email} onClick={() => void review(user, "reject")}>Reject</button><button className="primary-button" disabled={saving === user.email} onClick={() => void review(user, "approve")}>{saving === user.email ? "Updating…" : "Accept payment & activate"}</button></div></article>; }) : <div className="admin-empty">No payment confirmations are waiting for review.</div>}</section> : view === "progress" ? <section className="progress-admin-list">{visibleUsers.map((user) => <details className="student-progress-card" key={user.email}><summary><div><strong>{user.displayName}</strong><small>{user.selectedSubjects.length}/6 subjects · {user.progress.attemptCount} completed tests</small></div><span>{user.progress.latestAttempt ? <><b>{user.progress.latestAttempt.percent}%</b><small>{subjectName(user.progress.latestAttempt.subjectId)} {user.progress.latestAttempt.level}</small></> : <small>No completed test</small>}</span><span>{user.progress.lastActivity ? <><b>{actionLabel[user.progress.lastActivity.action] ?? user.progress.lastActivity.action}</b><small>{subjectName(user.progress.lastActivity.subjectId)} {user.progress.lastActivity.level ?? ""} · {new Date(user.progress.lastActivity.createdAt).toLocaleString("en-GB")}</small></> : <small>No activity yet</small>}</span></summary><div className="student-progress-body"><div><h3>Subject progress</h3>{user.progress.subjects.length ? user.progress.subjects.map((item) => <article key={item.subjectId}><strong>{subjectName(item.subjectId)} {item.latestLevel}</strong><span>{item.attempts} tests · {item.averagePercent}% average · latest {item.latestPercent}%</span><div className="topic-status-chips">{item.topics.map((topic) => <em className={topic.percent >= 75 ? "secure" : topic.percent >= 50 ? "developing" : "needs-work"} key={topic.code}>{topic.code} {topic.percent}%</em>)}</div></article>) : <p>No submitted test data.</p>}</div><div><h3>Recent activity</h3>{user.progress.recentActivities.length ? <ol className="activity-feed">{user.progress.recentActivities.map((activity) => <li key={activity.id}><i/><div><strong>{actionLabel[activity.action] ?? activity.action}</strong><span>{subjectName(activity.subjectId)} {activity.level ?? ""} {activity.paperId ?? ""}</span><small>{new Date(activity.createdAt).toLocaleString("en-GB")}</small></div></li>)}</ol> : <p>No activity events.</p>}</div></div></details>)}</section> : <section className="admin-table"><div className="admin-row head"><span>Account</span><span>Six subjects</span><span>Status</span><span>Premium control</span></div>{visibleUsers.length ? visibleUsers.map((user) => <div className="admin-row" key={user.email}><span><strong>{user.displayName}</strong><small>{user.email}</small></span><span className="subject-chips">{user.selectedSubjects.length ? user.selectedSubjects.map((id) => <em key={id}>{subjectName(id)} {user.subjectLevels?.[id] ?? ""}</em>) : <small>Not selected yet</small>}</span><span><b className={user.premium ? "status-premium" : "status-free"}>{user.premium ? "Premium" : "Free"}</b><small>{user.progress.attemptCount} completed tests</small></span><span><button className={`access-toggle ${user.premium ? "on" : ""}`} disabled={saving === user.email} onClick={() => void setPremium(user, !user.premium)}><i/><strong>{saving === user.email ? "Updating…" : user.premium ? "Premium enabled" : "Grant Premium"}</strong></button></span></div>) : <div className="admin-empty">No matching accounts.</div>}</section>}
+      <section className="admin-note"><strong>Safe review workflow & privacy</strong><p>The progress view records navigation and completion status, not students&apos; full written answers. Verify the payment reference with the payment provider before approving it. Payment approval activates Premium immediately; rejecting a request does not remove the account.</p></section>
     </div>
   </div>;
 }

@@ -6,7 +6,7 @@ import { buildUniqueQuestionPool, getAssessmentCriteria, getPapers, getRelevantT
 import { BrandLockup, BrandLogo } from "./logo";
 import { buildTestPlan, isSingleTopicPaper, topicLimitFor, type TestMode } from "./test-policy";
 
-type Stage = "loading" | "signin" | "recovery-code" | "account" | "premium" | "admin" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "setup" | "test" | "result";
+type Stage = "loading" | "signin" | "recovery-code" | "account" | "premium" | "admin" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "setup" | "ready" | "paper" | "test" | "answers" | "result";
 type Answers = Record<string, string>;
 type TopicScore = { code: string; title: string; percent: number; possible: number; earned: number };
 type CriterionScore = { code: string; name: string; description: string; percent: number; possible: number; earned: number };
@@ -43,6 +43,26 @@ const gradeFromPercent = (percent: number) => percent >= 84 ? 7 : percent >= 72 
 const normalize = (value: string) => value.toLocaleLowerCase().replace(/[–—]/g, "-").replace(/[^\p{L}\p{N}\s-]/gu, " ");
 const formatTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 const formatDuration = (seconds: number) => seconds ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : "—";
+
+function selectPreparedQuestions(pool: Question[], count: number, topicCodes: string[]) {
+  const selected: Question[] = [];
+  const used = new Set<string>();
+  const topicUse = new Map(topicCodes.map((code) => [code, 0]));
+  const demandSequence = [3, 2, 4, 3, 1, 5];
+  while (selected.length < count) {
+    const desired = demandSequence[selected.length % demandSequence.length];
+    const available = pool.filter((question) => !used.has(question.id));
+    if (!available.length) break;
+    available.sort((a, b) => {
+      const topicDelta = (topicUse.get(a.topicCode) ?? 0) - (topicUse.get(b.topicCode) ?? 0);
+      if (topicDelta) return topicDelta;
+      return Math.abs((a.difficultyLevel ?? 3) - desired) - Math.abs((b.difficultyLevel ?? 3) - desired);
+    });
+    const next = available[0];
+    selected.push(next); used.add(next.id); topicUse.set(next.topicCode, (topicUse.get(next.topicCode) ?? 0) + 1);
+  }
+  return selected;
+}
 
 type ThemeName = "blue" | "teal" | "violet" | "rose" | "orange" | "slate";
 const themes: Record<ThemeName, { name: string; blue: string; navy: string; soft: string; line: string; rgb: string }> = {
@@ -143,12 +163,15 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const [startedAt, setStartedAt] = useState(0);
   const [timeLeft, setTimeLeft] = useState(0);
   const [timeLimit, setTimeLimit] = useState(0);
+  const [paperDuration, setPaperDuration] = useState(0);
   const [plannedMinutes, setPlannedMinutes] = useState(60);
   const [savedResult, setSavedResult] = useState<{ percent: number; grade: number; comparison: Attempt | null; durationSeconds: number } | null>(null);
   const [saveError, setSaveError] = useState("");
   const [theme, setTheme] = useState<ThemeName>("blue");
   const [levelSaving, setLevelSaving] = useState(false);
   const [levelSaveStatus, setLevelSaveStatus] = useState("");
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfDownloaded, setPdfDownloaded] = useState(false);
   const [premiumAmount, setPremiumAmount] = useState("");
   const [premiumMethod, setPremiumMethod] = useState<PremiumRequest["paymentMethod"]>("bank_transfer");
   const [premiumPayer, setPremiumPayer] = useState("");
@@ -223,12 +246,14 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     finally { setAuthBusy(false); }
   };
 
+  const logActivity = (action: string, detail: Record<string, unknown> = {}, scope?: { subjectId?: string; level?: Level; paperId?: string }) => {
+    void apiFetch("/api/activity", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, subjectId: (scope?.subjectId ?? subjectId) || undefined, level: scope?.level ?? level, paperId: (scope?.paperId ?? paperId) || undefined, detail }) }).catch(() => undefined);
+  };
+
   const submitPremiumRequest = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setPremiumBusy(true); setPremiumMessage("");
     try {
-      const response = await apiFetch("/api/premium/request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
-        amountKrw: premiumAmount, paymentMethod: premiumMethod, payerName: premiumPayer, paymentReference: premiumReference, note: premiumNote,
-      }) });
+      const response = await apiFetch("/api/premium/request", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ amountKrw: premiumAmount, paymentMethod: premiumMethod, payerName: premiumPayer, paymentReference: premiumReference, note: premiumNote }) });
       const data = await response.json() as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "The Premium application could not be submitted.");
       await loadMe(false); setPremiumMessage("Payment confirmation submitted. Premium will activate after the administrator verifies and accepts it.");
@@ -266,6 +291,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const includedTopics = useMemo(() => topics.filter((topic) => selectedTopicCodes.includes(topic.code)), [topics, selectedTopicCodes]);
   const topicLimit = useMemo(() => topicLimitFor(subject, paper), [subject, paper]);
   const singleTopicPaper = useMemo(() => isSingleTopicPaper(subject.id, paper.id), [subject.id, paper.id]);
+  const downloadablePaper = useMemo(() => paper.id === "p1" || paper.id === "p1a" || paper.id === "concept" || /multiple.?choice|mcq/i.test(`${paper.name} ${paper.format}`), [paper]);
   const rangeLabel = includedTopics.map((topic) => topic.code).join(" · ");
 
   const result = useMemo(() => {
@@ -303,7 +329,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     const nextTopics = getRelevantTopics(next, nextLevel, nextPapers[0]);
     setSubjectId(id); setLevel(nextLevel); setPaperId(nextPapers[0].id);
     setSelectedTopicCodes(nextTopics.slice(0, Math.min(2, nextTopics.length)).map((topic) => topic.code));
-    setTestMode("diagnostic"); setStage("setup"); window.scrollTo({ top: 0 });
+    setTestMode("diagnostic"); setStage("setup"); logActivity("subject_opened", {}, { subjectId: id, level: nextLevel, paperId: nextPapers[0].id }); window.scrollTo({ top: 0 });
   };
 
   const changeLevel = (nextLevel: Level) => {
@@ -345,7 +371,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     });
   };
 
-  const startTest = () => {
+  const prepareTest = () => {
     const premium = Boolean(me?.premium);
     if (!premium && (me?.attempts.length ?? 0) > 0) { setSaveError("Your free account has already used its one test. Premium access is required to take another test."); return; }
     const previousIds = me?.attempts.flatMap((attempt) => attempt.questionIds ?? []) ?? [];
@@ -354,9 +380,35 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     const plan = buildTestPlan(subject, paper, includedTopics.length, premium, testMode, pool);
     const first = pool.find((question) => question.difficultyLevel === 3) ?? pool.find((question) => question.difficulty === "Standard") ?? pool[0];
     if (!first) { setSaveError("No unused questions remain for this exact selection. Choose another topic or paper while the bank refreshes."); return; }
-    finishGuard.current = false;
-    setQuestionPool(pool); setTargetQuestionCount(plan.questionCount); setQuestions([first]); setAnswers({}); setCurrent(0); setAdaptiveLevel(3);
-    setDifficultyTrail([first.difficulty]); setStartedAt(Date.now()); setTimeLimit(plan.seconds); setTimeLeft(plan.seconds); setPlannedMinutes(plan.plannedMinutes); setSavedResult(null); setSaveError(""); setStage("test"); window.scrollTo({ top: 0 });
+    const prepared = downloadablePaper ? selectPreparedQuestions(pool, plan.questionCount, includedTopics.map((topic) => topic.code)) : [first];
+    setQuestionPool(pool); setTargetQuestionCount(downloadablePaper ? prepared.length : plan.questionCount); setQuestions(prepared); setAnswers({}); setCurrent(0); setAdaptiveLevel(3);
+    setDifficultyTrail(prepared.map((question) => question.difficulty)); setStartedAt(0); setPaperDuration(0); setTimeLimit(plan.seconds); setTimeLeft(plan.seconds); setPlannedMinutes(plan.plannedMinutes); setSavedResult(null); setSaveError(""); setPdfDownloaded(false); finishGuard.current = false; setStage("ready");
+    logActivity("test_prepared", { topicCodes: includedTopics.map((topic) => topic.code), questionCount: downloadablePaper ? prepared.length : plan.questionCount, downloadable: downloadablePaper }); window.scrollTo({ top: 0 });
+  };
+
+  const startPreparedTest = () => {
+    setStartedAt(Date.now()); setTimeLeft(timeLimit); setPaperDuration(0); finishGuard.current = false;
+    setStage(downloadablePaper ? "paper" : "test");
+    logActivity("test_started", { questionCount: targetQuestionCount, seconds: timeLimit, downloaded: pdfDownloaded });
+    window.scrollTo({ top: 0 });
+  };
+
+  const openAnswerEntry = (timedOut = false) => {
+    const elapsed = startedAt ? Math.max(1, Math.min(timeLimit, Math.round((Date.now() - startedAt) / 1000))) : 0;
+    setPaperDuration(elapsed); setStage("answers"); setCurrent(0);
+    logActivity("answer_entry_opened", { elapsedSeconds: elapsed, timedOut }); window.scrollTo({ top: 0 });
+  };
+
+  const downloadPaper = async () => {
+    const element = document.getElementById("downloadable-question-paper");
+    if (!element) return;
+    setPdfBusy(true); setSaveError("");
+    try {
+      const { downloadElementAsPdf } = await import("./pdf-export");
+      await downloadElementAsPdf(element, `${subject.shortName}-${level}-${paper.name}-question-paper.pdf`);
+      setPdfDownloaded(true); logActivity("pdf_downloaded", { questionCount: questions.length });
+    } catch (error) { setSaveError(error instanceof Error ? error.message : "The PDF could not be created."); }
+    finally { setPdfBusy(false); }
   };
 
   const goToQuestion = (index: number) => {
@@ -383,26 +435,26 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   };
 
   const finish = async () => {
-    if (stage !== "test" || finishGuard.current) return;
+    if ((stage !== "test" && stage !== "answers") || finishGuard.current) return;
     finishGuard.current = true;
     const comparison = testMode === "monthly" ? me?.attempts.find((attempt) => attempt.mode === "monthly" && attempt.subjectId === subject.id && attempt.paperId === paper.id) ?? null : null;
-    const durationSeconds = Math.max(1, Math.round((Date.now() - startedAt) / 1000));
+    const durationSeconds = Math.max(1, paperDuration || Math.round((Date.now() - startedAt) / 1000));
     setSavedResult({ percent: result.percent, grade: result.grade, comparison, durationSeconds });
     setStage("result"); window.scrollTo({ top: 0 });
     const response = await apiFetch("/api/attempts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
       subjectId: subject.id, subjectName: subject.name, level, paperId: paper.id, paperName: paper.name, mode: testMode,
       percent: result.percent, grade: result.grade, durationSeconds, topicBreakdown, criteriaBreakdown, questionIds: questions.map((question) => question.id), difficultyTrail, mistakes,
     }) });
-    if (response.ok) await loadMe(false);
-    else { const data = await response.json() as { error?: string }; setSaveError(data.error ?? "The result could not be saved."); }
+    if (response.ok) { await loadMe(false); logActivity("test_submitted", { percent: result.percent, durationSeconds, questionCount: questions.length }); }
+    else { const data = await response.json() as { error?: string }; setSaveError(data.error ?? "The result could not be saved."); finishGuard.current = false; }
   };
 
   useEffect(() => {
-    if (stage !== "test" || timeLimit <= 0) return;
+    if ((stage !== "test" && stage !== "paper") || timeLimit <= 0) return;
     const timer = window.setInterval(() => setTimeLeft((value) => {
       if (value <= 1) {
         window.clearInterval(timer);
-        window.setTimeout(() => document.getElementById("timed-auto-submit")?.click(), 0);
+        window.setTimeout(() => document.getElementById(stage === "paper" ? "timed-open-answers" : "timed-auto-submit")?.click(), 0);
         return 0;
       }
       return value - 1;
@@ -430,6 +482,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
         {me?.premium && <button className={`nav-link ${stage === "status" ? "active" : ""}`} onClick={() => setStage("status")}>Current status</button>}
         <button className={`nav-link ${stage === "mistakes" ? "active" : ""}`} onClick={() => setStage("mistakes")}>Mistake bank</button>
         {me?.premium && <span className="premium-access">★ Premium Access</span>}
+        {!me?.premium && <button className={`account-link ${stage === "premium" ? "active" : ""}`} onClick={() => setStage("premium")}>{me?.premiumRequest?.status === "pending" ? "Payment pending" : "Apply for Premium"}</button>}
         <ThemePicker value={theme} onChange={changeTheme}/>
         {me?.user.isAdmin && <button className={`admin-link ${stage === "admin" ? "active" : ""}`} type="button" onClick={() => setStage("admin")}>Admin</button>}
         <span className="account-identity" title={me?.user.email}>{me?.user.email}</span>
@@ -470,12 +523,18 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
         <button className={`tier-card ${testMode === "diagnostic" ? "selected" : ""}`} onClick={() => setTestMode("diagnostic")}><span className="tier-top"><strong>{me?.premium ? "Deep diagnostic" : "Quick diagnostic"}</strong><em>{me?.premium ? "PREMIUM" : "FREE"}</em></span><p>Paper-aware question budget · timed for 15–60 minutes</p><ul><li>Paper-specific question types</li><li>Every selected topic is prioritized before repeats</li><li>Estimated grade and answer review</li></ul></button>
         <button className={`tier-card premium ${testMode === "monthly" ? "selected" : ""} ${!me?.premium ? "locked" : ""}`} disabled={!me?.premium} onClick={() => me?.premium && setTestMode("monthly")}><span className="popular">MONTHLY CHECK-IN</span><span className="tier-top"><strong>Monthly Progress Test</strong><em>PREMIUM</em></span><p>Paper-aware adaptive test · maximum 60-minute timer</p><ul><li>Previous-test comparison</li><li>Topic gains and remaining gaps</li><li>Speed and score change</li></ul></button>
       </div></SetupBlock>
-      {saveError && <div className="inline-error">{saveError}</div>}<div className="start-panel"><div><strong>{subject.name} {level} · {paper.name}</strong><span>{includedTopics.length} topics · {paper.id === "concept" ? "timed adaptive concept MCQ" : testMode === "monthly" ? "timed monthly progress test" : "timed adaptive diagnostic"} · maximum 60 minutes</span></div><button className="primary-button" disabled={!includedTopics.length || freeLocked || levelSaving} onClick={startTest}>{levelSaving ? "Saving level…" : freeLocked ? "Free test already used" : `Start ${testMode === "monthly" ? "monthly test" : "diagnostic"}`} <span>→</span></button></div>
+      {saveError && <div className="inline-error">{saveError}</div>}<div className="start-panel"><div><strong>{subject.name} {level} · {paper.name}</strong><span>{includedTopics.length} topics · {downloadablePaper ? "downloadable question paper" : paper.id === "concept" ? "timed adaptive concept MCQ" : testMode === "monthly" ? "timed monthly progress test" : "timed adaptive diagnostic"} · maximum 60 minutes</span></div><button className="primary-button" disabled={!includedTopics.length || freeLocked || levelSaving} onClick={prepareTest}>{levelSaving ? "Saving level…" : freeLocked ? "Free test already used" : "Prepare test"} <span>→</span></button></div>
     </div>}
+
+    {stage === "ready" && <div className="page-container ready-page" style={{ "--subject": subject.color, "--subject-soft": subject.softColor } as React.CSSProperties}><button className="back-link" onClick={() => setStage("setup")}>← Test setup</button><div className="ready-hero"><span className="eyebrow">TEST READY</span><h1>{subject.name} {level}</h1><p>{paper.name} · {rangeLabel}</p><div className="ready-summary"><div><strong>{targetQuestionCount}</strong><span>questions</span></div><div><strong>{plannedMinutes}</strong><span>minutes</span></div><div><strong>{questions.reduce((sum, question) => sum + question.marks, 0)}</strong><span>marks</span></div></div></div><section className="ready-steps"><article><span>1</span><div><strong>{downloadablePaper ? "Download the question paper" : "Check your setup"}</strong><p>{downloadablePaper ? "The PDF contains the complete original paper, stimuli, diagrams, marks and answer space. It never includes the markscheme." : "The timer has not started. When ready, begin the online adaptive test."}</p></div>{downloadablePaper && <button className="secondary-button" disabled={pdfBusy} onClick={() => void downloadPaper()}>{pdfBusy ? "Creating PDF…" : pdfDownloaded ? "Download PDF again" : "Download PDF"}</button>}</article><article><span>2</span><div><strong>Start only when ready</strong><p>The {formatTime(timeLimit)} timer begins only when you press Start exam. {downloadablePaper ? "Solve the downloaded paper, then open the answer-check section." : "Answer directly on this site."}</p></div><button className="primary-button" disabled={downloadablePaper && !pdfDownloaded} onClick={startPreparedTest}>{downloadablePaper && !pdfDownloaded ? "Download PDF first" : "Start exam"} <span>→</span></button></article></section>{saveError && <div className="inline-error">{saveError}</div>}<PrintablePaper id="downloadable-question-paper" subjectName={subject.name} level={level} paperName={paper.name} minutes={plannedMinutes} questions={questions}/></div>}
+
+    {stage === "paper" && <div className="paper-session page-container" style={{ "--subject": subject.color, "--subject-soft": subject.softColor } as React.CSSProperties}><button id="timed-open-answers" className="sr-only" onClick={() => openAnswerEntry(true)}>Open answers</button><span className="eyebrow">PDF EXAM IN PROGRESS</span><h1>{subject.name} {level} · {paper.name}</h1><div className={`paper-timer ${timeLeft < 300 ? "urgent" : ""}`}><span>TIME LEFT</span><strong>{formatTime(timeLeft)}</strong><div><i style={{ width: `${Math.max(0, (timeLeft / Math.max(timeLimit, 1)) * 100)}%` }}/></div></div><section><strong>Work from your downloaded question paper.</strong><p>Your answers are not shown on screen during the timed session. When finished, stop the timer and enter your responses for checking. If time reaches zero, the answer-check section opens automatically.</p><button className="secondary-button" onClick={() => void downloadPaper()}>Download paper again</button></section><button className="primary-button finish-paper" onClick={() => openAnswerEntry(false)}>I finished — enter answers <span>→</span></button></div>}
+
+    {stage === "answers" && <div className="page-container answer-entry-page" style={{ "--subject": subject.color, "--subject-soft": subject.softColor } as React.CSSProperties}><div className="answer-entry-heading"><span className="eyebrow">ANSWER CHECK</span><h1>Enter your completed responses</h1><p>The exam timer stopped at {formatTime(paperDuration)}. Transcribe your answers below, then submit once to see estimated marks and markscheme requirements.</p><div className="answer-progress"><strong>{answered}/{questions.length}</strong><span>responses entered</span></div></div><div className="answer-entry-list">{questions.map((question, index) => <section key={question.id}><div className="answer-number">Question {index + 1}</div><QuestionCard question={question} answer={answers[question.id] ?? ""} allowMathSymbols={subject.group === "Sciences" || subject.group === "Mathematics"} onAnswer={(value) => setAnswers((currentAnswers) => ({ ...currentAnswers, [question.id]: value }))}/></section>)}</div><div className="submit-answer-check"><div><strong>Ready to check?</strong><span>You can submit unanswered questions; they receive zero estimated marks.</span></div><button className="primary-button" onClick={() => void finish()}>Check answers & finish <span>→</span></button></div></div>}
 
     {stage === "test" && questions[current] && <div className="test-layout" style={{ "--subject": subject.color, "--subject-soft": subject.softColor } as React.CSSProperties}>
       <aside className="test-sidebar"><div><span className="eyebrow">{subject.name} {level}</span><h2>{paper.name}</h2><p>{rangeLabel} · {subject.id === "cs" && paper.id === "p2" ? `${codeLanguage === "python" ? "Python" : "Java"} · ` : ""}{testMode === "monthly" ? "Monthly" : me?.premium ? "Premium" : "Quick"}</p><div className={`timer ${timeLeft < 300 ? "urgent" : ""}`}><span>TIME LEFT</span><strong>{formatTime(timeLeft)}</strong></div></div><div className="adaptive-indicator"><span>ADAPTIVE LEVEL</span><strong>Level {adaptiveLevel} · {adaptiveLevel === 1 ? "Recognition" : adaptiveLevel === 2 ? "Basic explanation" : adaptiveLevel === 3 ? "Multi-step application" : adaptiveLevel === 4 ? "Evaluation & integration" : "Synthesis under uncertainty"}</strong><small>Only one demand dimension changes after each response.</small></div><div className="question-map">{questions.map((question, index) => <button type="button" key={question.id} aria-label={`Open question ${index + 1}`} className={`${index === current ? "active" : ""} ${(answers[question.id] ?? "").trim() ? "answered" : ""}`} onClick={() => goToQuestion(index)}><span>{index + 1}</span><small>{question.topicCode}</small></button>)}</div><div className="sidebar-progress"><span><strong>{answered}</strong> answered · target {targetQuestionCount} · {plannedMinutes} min</span><div><i style={{ width: `${(questions.length / targetQuestionCount) * 100}%` }}/></div></div></aside>
-      <section className="question-stage"><button id="timed-auto-submit" className="sr-only" onClick={() => void finish()}>Auto submit</button><div className="question-topline"><span>Question {current + 1} of {targetQuestionCount}</span><span>Responses submit when time ends</span></div><QuestionCard question={questions[current]} answer={answers[questions[current].id] ?? ""} onAnswer={(value) => setAnswers({ ...answers, [questions[current].id]: value })}/><div className="question-actions"><button type="button" className="secondary-button" disabled={current === 0} onClick={() => goToQuestion(current - 1)}>Previous</button>{current === questions.length - 1 && questions.length >= targetQuestionCount ? <button type="button" className="primary-button" onClick={() => void finish()}>Finish & analyse <span>→</span></button> : <button type="button" className="primary-button" onClick={nextAdaptiveQuestion}>Next question <span>→</span></button>}</div></section>
+      <section className="question-stage"><button id="timed-auto-submit" className="sr-only" onClick={() => void finish()}>Auto submit</button><div className="question-topline"><span>Question {current + 1} of {targetQuestionCount}</span><span>Responses submit when time ends</span></div><QuestionCard question={questions[current]} answer={answers[questions[current].id] ?? ""} allowMathSymbols={subject.group === "Sciences" || subject.group === "Mathematics"} onAnswer={(value) => setAnswers({ ...answers, [questions[current].id]: value })}/><div className="question-actions"><button type="button" className="secondary-button" disabled={current === 0} onClick={() => goToQuestion(current - 1)}>Previous</button>{current === questions.length - 1 && questions.length >= targetQuestionCount ? <button type="button" className="primary-button" onClick={() => void finish()}>Finish & analyse <span>→</span></button> : <button type="button" className="primary-button" onClick={nextAdaptiveQuestion}>Next question <span>→</span></button>}</div></section>
     </div>}
 
     {stage === "result" && savedResult && <div className="page-container result-page" style={{ "--subject": subject.color, "--subject-soft": subject.softColor } as React.CSSProperties}>
@@ -570,7 +629,7 @@ function GrowthSummary({ current, previous, currentBreakdown, duration }: { curr
 
 function LockedFeature({ title, text }: { title: string; text: string }) { return <div className="locked-feature"><span>PREMIUM ACCESS REQUIRED</span><h2>{title}</h2><p>{text}</p></div>; }
 function SetupBlock({ number, title, subtitle, side, children }: { number: string; title: string; subtitle: string; side?: string; children: React.ReactNode }) { return <section className="setup-block"><div className="setup-number">{number}</div><div className="setup-content"><div className="block-title"><div><h2>{title}</h2><p>{subtitle}</p></div>{side && <span className="range-count">{side}</span>}</div>{children}</div></section>; }
-function QuestionCard({ question, answer, onAnswer }: { question: Question; answer: string; onAnswer: (value: string) => void }) {
+function QuestionCard({ question, answer, onAnswer, allowMathSymbols = false }: { question: Question; answer: string; onAnswer: (value: string) => void; allowMathSymbols?: boolean }) {
   return <article className="question-card">
     <div className="question-meta"><span>{question.topicCode} · {question.topicTitle}</span><span>{question.commandTerm ?? question.skill}</span><span>[{question.marks} mark{question.marks !== 1 ? "s" : ""}]</span>{question.difficultyLevel && <span>D{question.difficultyLevel}</span>}{question.premiumOnly && <em>Premium depth</em>}</div>
     {question.syllabusPath && <div className="syllabus-path"><strong>{question.syllabusProfile}</strong><span>{question.syllabusPath}</span><em>{question.section} · ~{question.estimatedMinutes} min</em></div>}
@@ -578,9 +637,25 @@ function QuestionCard({ question, answer, onAnswer }: { question: Question; answ
     {question.visual && <QuestionVisual type={question.visual} data={question.visualData}/>}
     {question.starterCode && <div className="starter-code"><span>{question.codeLanguage ?? "python"}</span><pre>{question.starterCode}</pre></div>}
     <h1>{question.prompt}</h1>
-    {question.responseType === "mcq" ? <div className="choice-list">{question.choices?.map((choice, index) => <button key={`${choice}-${index}`} className={answer === String(index) ? "selected" : ""} onClick={() => onAnswer(String(index))}><span>{String.fromCharCode(65 + index)}</span><p>{choice}</p></button>)}</div> : question.responseType === "diagram" ? <DiagramPad value={answer} onChange={onAnswer}/> : <div className={`response-area ${question.responseType === "code" ? "code-response" : ""}`}><textarea value={answer} spellCheck={question.responseType !== "code"} onChange={(event) => onAnswer(event.target.value)} placeholder={question.responseType === "code" ? `Write valid ${question.codeLanguage ?? "Python"} code here…` : question.responseType === "extended" ? "Build a structured response with evidence, reasoning and a supported conclusion…" : "Write a concise exam-style answer and show your reasoning…"} rows={question.responseType === "extended" || question.responseType === "code" ? 13 : 7}/><span>{question.responseType === "code" ? `${answer.split("\n").length} lines` : `${answer.trim().split(/\s+/).filter(Boolean).length} words`}</span></div>}
+    {question.responseType === "mcq" ? <div className="choice-list">{question.choices?.map((choice, index) => <button type="button" key={`${choice}-${index}`} className={answer === String(index) ? "selected" : ""} onClick={() => onAnswer(String(index))}><span>{String.fromCharCode(65 + index)}</span><p>{choice}</p></button>)}</div> : question.responseType === "diagram" ? <DiagramPad value={answer} onChange={onAnswer}/> : <TextAnswer question={question} value={answer} onChange={onAnswer} allowMathSymbols={allowMathSymbols && question.responseType !== "code"}/>}
     <div className="question-note"><strong>Assessment demand</strong><span>{question.difficulty} · {question.skill}. The item uses an original parallel stimulus and a markscheme-first structure.</span></div>
   </article>;
+}
+
+const mathSymbols = ["×", "÷", "±", "√", "²", "³", "π", "θ", "Δ", "Σ", "∫", "∞", "≈", "≤", "≥", "≠", "→", "°", "μ", "λ", "Ω", "α", "β", "γ", "₀", "₁", "₂"];
+function TextAnswer({ question, value, onChange, allowMathSymbols }: { question: Question; value: string; onChange: (value: string) => void; allowMathSymbols: boolean }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const insert = (symbol: string) => {
+    const input = ref.current; const start = input?.selectionStart ?? value.length; const end = input?.selectionEnd ?? value.length;
+    onChange(`${value.slice(0, start)}${symbol}${value.slice(end)}`);
+    window.requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(start + symbol.length, start + symbol.length); });
+  };
+  return <div className={`response-area ${question.responseType === "code" ? "code-response" : ""}`}>{allowMathSymbols && <div className="symbol-palette" aria-label="Mathematics symbol palette"><span>Math symbols</span>{mathSymbols.map((symbol) => <button type="button" key={symbol} onClick={() => insert(symbol)}>{symbol}</button>)}</div>}<textarea ref={ref} value={value} spellCheck={question.responseType !== "code"} onChange={(event) => onChange(event.target.value)} placeholder={question.responseType === "code" ? `Write valid ${question.codeLanguage ?? "Python"} code here…` : question.responseType === "extended" ? "Build a structured response with evidence, reasoning and a supported conclusion…" : "Write a concise exam-style answer and show your reasoning…"} rows={question.responseType === "extended" || question.responseType === "code" ? 13 : 7}/><span>{question.responseType === "code" ? `${value.split("\n").length} lines` : `${value.trim().split(/\s+/).filter(Boolean).length} words`}</span></div>;
+}
+
+function PrintablePaper({ id, subjectName, level, paperName, minutes, questions }: { id: string; subjectName: string; level: Level; paperName: string; minutes: number; questions: Question[] }) {
+  const totalMarks = questions.reduce((sum, question) => sum + question.marks, 0);
+  return <div id={id} className="printable-paper" aria-hidden="true"><section data-pdf-page className="pdf-page pdf-cover"><BrandLogo/><span>IB-STYLE ORIGINAL PRACTICE</span><h1>{subjectName} {level}</h1><h2>{paperName}</h2><dl><div><dt>Time allowed</dt><dd>{minutes} minutes</dd></div><div><dt>Total marks</dt><dd>{totalMarks}</dd></div><div><dt>Questions</dt><dd>{questions.length}</dd></div></dl><div className="pdf-instructions"><strong>Instructions to candidates</strong><ul><li>Do not open the online answer-check section until you have finished the timed paper.</li><li>Write all working clearly. Unsupported answers may not receive full marks.</li><li>Use the data, figures and command terms provided in each question.</li><li>This is an original formative practice paper and is not an official IB examination.</li></ul></div><footer>IB Subject Diagnostic · Question paper only · No markscheme included</footer></section>{questions.map((question, index) => <section data-pdf-page className="pdf-page pdf-question" key={question.id}><header><strong>{subjectName} {level}</strong><span>{paperName}</span></header><div className="pdf-question-meta"><span>Question {index + 1}</span><span>{question.topicCode} · {question.commandTerm ?? question.skill}</span><b>[{question.marks}]</b></div>{question.context && <div className="pdf-source"><strong>Source</strong><p>{question.context}</p></div>}{question.visual && <QuestionVisual type={question.visual} data={question.visualData}/>} {question.starterCode && <pre>{question.starterCode}</pre>}<h2>{question.prompt}</h2>{question.responseType === "mcq" ? <ol className="pdf-choices" type="A">{question.choices?.map((choice) => <li key={choice}>{choice}</li>)}</ol> : <div className="pdf-answer-space">{Array.from({ length: question.responseType === "extended" ? 17 : question.responseType === "code" ? 18 : question.responseType === "diagram" ? 14 : 10 }, (_, line) => <i key={line}/>)}</div>}<footer><span>{index + 1} / {questions.length}</span><span>Write answers in the space provided or on additional paper.</span></footer></section>)}</div>;
 }
 
 type DiagramData = { paths: string[]; labels: Array<{ x: number; y: number; text: string }>; explanation: string };

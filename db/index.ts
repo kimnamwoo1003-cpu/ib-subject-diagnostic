@@ -63,6 +63,16 @@ export async function ensureSchema() {
       mistakes text DEFAULT '[]' NOT NULL,
       created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
     )`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS user_activities (
+      id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+      user_email text NOT NULL,
+      action text NOT NULL,
+      subject_id text,
+      level text,
+      paper_id text,
+      detail text DEFAULT '{}' NOT NULL,
+      created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
+    )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS premium_requests (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       user_email text NOT NULL,
@@ -81,6 +91,7 @@ export async function ensureSchema() {
     )`),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS attempts_user_date_idx ON test_attempts (user_email, created_at)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS premium_requests_user_date_idx ON premium_requests (user_email, created_at)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS activities_user_date_idx ON user_activities (user_email, created_at)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS premium_requests_status_idx ON premium_requests (status, created_at)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS sessions_username_idx ON sessions (username)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions (expires_at)"),

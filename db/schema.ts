@@ -63,3 +63,14 @@ export const testAttempts = sqliteTable("test_attempts", {
   mistakes: text("mistakes").notNull().default("[]"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const userActivities = sqliteTable("user_activities", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userEmail: text("user_email").notNull(),
+  action: text("action").notNull(),
+  subjectId: text("subject_id"),
+  level: text("level"),
+  paperId: text("paper_id"),
+  detail: text("detail").notNull().default("{}"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
