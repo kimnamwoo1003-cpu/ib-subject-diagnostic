@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const accounts = sqliteTable("accounts", {
   username: text("username").primaryKey(),
@@ -74,3 +74,49 @@ export const userActivities = sqliteTable("user_activities", {
   detail: text("detail").notNull().default("{}"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
+
+export const gradeEvidence = sqliteTable("grade_evidence", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userEmail: text("user_email").notNull(),
+  subjectId: text("subject_id").notNull(),
+  level: text("level").notNull(),
+  componentId: text("component_id").notNull(),
+  componentName: text("component_name").notNull(),
+  sourcePlatform: text("source_platform").notNull(),
+  scoreEarned: integer("score_earned").notNull(),
+  scorePossible: integer("score_possible").notNull(),
+  percent: integer("percent").notNull(),
+  assessmentWeight: integer("assessment_weight").notNull(),
+  assessmentDate: text("assessment_date").notNull(),
+  evidenceKey: text("evidence_key").notNull(),
+  evidenceHash: text("evidence_hash").notNull(),
+  evidenceMime: text("evidence_mime").notNull(),
+  evidenceSize: integer("evidence_size").notNull(),
+  originalFilename: text("original_filename").notNull(),
+  status: text("status").notNull().default("pending"),
+  automatedChecks: text("automated_checks").notNull().default("[]"),
+  adminNote: text("admin_note").notNull().default(""),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: text("reviewed_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("grade_evidence_user_date_idx").on(table.userEmail, table.createdAt),
+  index("grade_evidence_status_date_idx").on(table.status, table.createdAt),
+  index("grade_evidence_hash_idx").on(table.evidenceHash),
+]);
+
+export const gradeGoals = sqliteTable("grade_goals", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userEmail: text("user_email").notNull(),
+  subjectId: text("subject_id").notNull(),
+  level: text("level").notNull(),
+  targetPercent: integer("target_percent").notNull().default(75),
+  grade7Boundary: integer("grade7_boundary").notNull().default(75),
+  upcomingComponentId: text("upcoming_component_id").notNull().default("p1"),
+  upcomingComponentName: text("upcoming_component_name").notNull().default("Paper 1"),
+  upcomingWeight: integer("upcoming_weight").notNull().default(20),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  uniqueIndex("grade_goals_user_subject_level_idx").on(table.userEmail, table.subjectId, table.level),
+]);

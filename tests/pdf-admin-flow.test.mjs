@@ -42,3 +42,21 @@ test("admin data combines attempts, activity events and payment review", async (
   assert.match(schema, /user_activities/);
   assert.match(schema, /premium_requests/);
 });
+
+test("grade evidence requires Premium, private object storage and manual admin review", async () => {
+  const [studentRoute, adminRoute, hosting, schema] = await Promise.all([
+    readFile(new URL("app/api/grades/route.ts", root), "utf8"),
+    readFile(new URL("app/api/admin/grades/route.ts", root), "utf8"),
+    readFile(new URL(".openai/hosting.json", root), "utf8"),
+    readFile(new URL("db/schema.ts", root), "utf8"),
+  ]);
+  assert.match(studentRoute, /Premium access required/);
+  assert.match(studentRoute, /SHA-256/);
+  assert.match(studentRoute, /This screenshot has already been submitted/);
+  assert.match(studentRoute, /env\.BUCKET\.put/);
+  assert.match(adminRoute, /user\?\.isAdmin/);
+  assert.match(adminRoute, /status: payload\.decision === "verify" \? "verified" : "rejected"/);
+  assert.equal(JSON.parse(hosting).r2, "BUCKET");
+  assert.match(schema, /grade_evidence/);
+  assert.match(schema, /grade_goals/);
+});

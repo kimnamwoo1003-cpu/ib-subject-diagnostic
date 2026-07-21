@@ -3,10 +3,11 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import AdminClient from "./admin/admin-client";
 import { buildUniqueQuestionPool, getAssessmentCriteria, getPapers, getRelevantTopics, Level, Question, subjectCatalog, subjects } from "./data";
+import GradeTracker from "./grade-tracker";
 import { BrandLockup, BrandLogo } from "./logo";
 import { buildTestPlan, isSingleTopicPaper, topicLimitFor, type TestMode } from "./test-policy";
 
-type Stage = "loading" | "signin" | "recovery-code" | "account" | "premium" | "admin" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "setup" | "ready" | "paper" | "test" | "answers" | "result";
+type Stage = "loading" | "signin" | "recovery-code" | "account" | "premium" | "admin" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "grades" | "setup" | "ready" | "paper" | "test" | "answers" | "result";
 type DeliveryMode = "online" | "pdf";
 type Answers = Record<string, string>;
 type TopicScore = { code: string; title: string; percent: number; possible: number; earned: number };
@@ -485,6 +486,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
         <button className={`nav-link ${stage === "home" ? "active" : ""}`} onClick={goHome}>Dashboard</button>
         <button className={`nav-link ${stage === "reports" ? "active" : ""}`} onClick={() => setStage("reports")}>Reports</button>
         {me?.premium && <button className={`nav-link ${stage === "status" ? "active" : ""}`} onClick={() => setStage("status")}>Current status</button>}
+        {me?.premium && <button className={`nav-link ${stage === "grades" ? "active" : ""}`} onClick={() => setStage("grades")}>Grades</button>}
         <button className={`nav-link ${stage === "mistakes" ? "active" : ""}`} onClick={() => setStage("mistakes")}>Mistake bank</button>
         {me?.premium && <span className="premium-access">★ Premium Access</span>}
         {!me?.premium && <button className={`account-link ${stage === "premium" ? "active" : ""}`} onClick={() => setStage("premium")}>{me?.premiumRequest?.status === "pending" ? "Payment pending" : "Apply for Premium"}</button>}
@@ -514,6 +516,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     {stage === "reports" && <ReportsView premium={Boolean(me?.premium)} attempts={me?.attempts ?? []} onBack={goHome} />}
     {stage === "status" && <StatusView premium={Boolean(me?.premium)} attempts={me?.attempts ?? []} onBack={goHome} />}
     {stage === "mistakes" && <MistakeBank premium={Boolean(me?.premium)} mistakes={allMistakes} onBack={goHome} />}
+    {stage === "grades" && me?.premium && <GradeTracker selectedSubjects={me.selectedSubjects} subjectLevels={me.subjectLevels} onBack={goHome}/>}
     {stage === "premium" && <PremiumApplication request={me?.premiumRequest ?? null} message={premiumMessage} amount={premiumAmount} method={premiumMethod} payer={premiumPayer} reference={premiumReference} note={premiumNote} busy={premiumBusy} onAmount={setPremiumAmount} onMethod={setPremiumMethod} onPayer={setPremiumPayer} onReference={setPremiumReference} onNote={setPremiumNote} onSubmit={submitPremiumRequest} onRefresh={async () => { setPremiumMessage(""); await loadMe(false); }} onBack={goHome}/>}
     {stage === "admin" && me?.user.isAdmin && <AdminClient adminName={me.user.displayName} embedded onBack={goHome}/>}
     {stage === "account" && <div className="page-container report-page"><button className="back-link" onClick={goHome}>← Dashboard</button><div className="report-heading"><span className="eyebrow">ACCOUNT SECURITY</span><h1>Password recovery</h1><p>Create a new recovery code while you are signed in. Generating one immediately invalidates the previous code.</p></div><section className="account-security-card"><div><strong>Recovery code</strong><p>Keep it outside this site, such as in a password manager. Anyone with the code and your username can reset your password.</p></div>{issuedRecoveryCode ? <><code>{issuedRecoveryCode}</code><span className="recovery-warning">This is shown once. Save it before leaving this page.</span></> : <button className="primary-button" disabled={authBusy} onClick={() => void generateRecoveryCode()}>{authBusy ? "Creating…" : "Create new recovery code"} <span>→</span></button>}{authError && <div className="auth-error" role="alert">{authError}</div>}</section></div>}

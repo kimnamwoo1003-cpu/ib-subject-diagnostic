@@ -29,6 +29,20 @@
       "when": 1784026271836,
       "tag": "0003_naive_grim_reaper",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1784656361738,
+      "tag": "0004_sturdy_salo",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1784656490184,
+      "tag": "0005_neat_william_stryker",
+      "breakpoints": true
     }
   ]
 }

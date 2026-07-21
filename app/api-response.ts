@@ -1,6 +1,6 @@
 export const GITHUB_PAGES_ORIGIN = "https://kimnamwoo1003-cpu.github.io";
 
-export function corsHeaders(request: Request) {
+export function corsHeaders(request: Request): Record<string, string> {
   const origin = request.headers.get("origin");
   if (origin !== GITHUB_PAGES_ORIGIN) return {};
   return {
