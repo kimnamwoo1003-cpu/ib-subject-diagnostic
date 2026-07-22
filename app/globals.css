@@ -382,7 +382,7 @@ footer>span { color:var(--ink); font-weight:850; }
 /* 2026 workspace refresh */
 :root{--ink:#102448;--muted:#65758f;--paper:#fff;--wash:#f3f7fd;--line:#dbe5f2}
 html{font-size:16px;background:#f5f8fc}
-body{min-width:320px;background:radial-gradient(circle at 7% 0%,rgba(var(--theme-rgb),.08),transparent 28rem),linear-gradient(180deg,#fbfdff 0%,#f2f6fb 100%);font-family:"Avenir Next","Segoe UI Variable",Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:-.006em}
+body{min-width:320px;background:radial-gradient(circle at 7% 0%,rgba(var(--theme-rgb),.08),transparent 28rem),linear-gradient(180deg,#fbfdff 0%,#f2f6fb 100%);font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 button,input,select,textarea{font:inherit}
 .page-container{width:min(1240px,calc(100% - 56px))}
 .home-page{padding:66px 0 84px}
@@ -431,7 +431,7 @@ button,input,select,textarea{font:inherit}
 .primary-button{border-radius:12px;box-shadow:0 10px 22px rgba(var(--theme-rgb),.18)}
 
 /* Commons uses the same typography and spacing while retaining a social identity. */
-.commons-shell{--c-ink:#17213b;--c-muted:#68738a;--c-paper:#fff;--c-bg:#f4f6fb;--c-line:#dfe4ee;--c-indigo:#514dd7;--c-coral:#ee6b4d;font-family:"Avenir Next","Segoe UI Variable",Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:radial-gradient(circle at 85% 0%,#ebeaff,transparent 32rem),var(--c-bg)}
+.commons-shell{--c-ink:#17213b;--c-muted:#68738a;--c-paper:#fff;--c-bg:#f4f6fb;--c-line:#dfe4ee;--c-indigo:#514dd7;--c-coral:#ee6b4d;font-family:Inter,ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:radial-gradient(circle at 85% 0%,#ebeaff,transparent 32rem),var(--c-bg)}
 .commons-header{height:80px;background:rgba(255,255,255,.93);box-shadow:0 8px 28px rgba(35,37,71,.06)}
 .commons-layout{padding-top:38px}.commons-welcome{border-radius:26px;padding:32px 34px;background:linear-gradient(135deg,#25223e,#4e49c9)}
 .commons-welcome h1{font-size:34px}.commons-welcome p{font-size:12px;line-height:1.5}
