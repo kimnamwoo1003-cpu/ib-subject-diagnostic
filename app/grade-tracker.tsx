@@ -50,6 +50,7 @@ export default function GradeTracker({ selectedSubjects, subjectLevels, onBack }
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [evidenceName, setEvidenceName] = useState("");
 
   const load = async () => {
     const response = await gradeFetch("/api/grades", { cache: "no-store" });
@@ -106,7 +107,7 @@ export default function GradeTracker({ selectedSubjects, subjectLevels, onBack }
       const response = await gradeFetch("/api/grades", { method: "POST", body: form });
       const payload = await response.json() as { error?: string };
       if (!response.ok) throw new Error(payload.error ?? "Evidence could not be submitted.");
-      event.currentTarget.reset(); setScoreEarned(""); setScorePossible("");
+      event.currentTarget.reset(); setScoreEarned(""); setScorePossible(""); setEvidenceName("");
       setMessage("Evidence submitted. Automated checks passed; an administrator must still review the screenshot before it affects your rank.");
       await load();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Evidence could not be submitted."); }
@@ -151,7 +152,7 @@ export default function GradeTracker({ selectedSubjects, subjectLevels, onBack }
           <label><span>Maximum marks</span><input type="number" min="0.1" step="0.1" value={scorePossible} onChange={(event) => setScorePossible(event.target.value)} required/></label>
           <label><span>Assessment weight (%)</span><input type="number" min="1" max="100" value={assessmentWeight} onChange={(event) => setAssessmentWeight(event.target.value)} required/></label>
           <label><span>Assessment date</span><input type="date" max={new Date().toISOString().slice(0, 10)} value={assessmentDate} onChange={(event) => setAssessmentDate(event.target.value)} required/></label>
-          <label className="full"><span>Original screenshot (PNG, JPEG or WebP · max 8 MB)</span><input type="file" name="evidence" accept="image/png,image/jpeg,image/webp" required/></label>
+          <label className="full custom-file-field"><span>Original screenshot (PNG, JPEG or WebP · max 8 MB)</span><span className="custom-file-control"><strong>Choose screenshot</strong><em>{evidenceName || "No file selected"}</em></span><input className="custom-file-input" type="file" name="evidence" accept="image/png,image/jpeg,image/webp" required onChange={(event) => setEvidenceName(event.target.files?.[0]?.name ?? "")}/></label>
           <label className="grade-confirm full"><input type="checkbox" required/><span>I confirm this is my own unaltered school record and the entered marks match the screenshot.</span></label>
         </div><button className="primary-button" disabled={busy}>{busy ? "Submitting…" : "Submit for verification"} <span>→</span></button></form>
         <form className="grade-panel target-panel" onSubmit={saveGoal}><div><span className="step-label">02</span><h2>Set target & next assessment</h2><p>Grade boundaries vary by examination session. Use the value from your school or current session; this is a planning estimate, not an official predicted grade.</p></div><div className="grade-form-grid one">

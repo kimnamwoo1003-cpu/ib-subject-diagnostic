@@ -2,12 +2,13 @@
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import AdminClient from "./admin/admin-client";
+import CommunityClient from "./community-client";
 import { buildUniqueQuestionPool, getAssessmentCriteria, getPapers, getRelevantTopics, Level, Question, subjectCatalog, subjects } from "./data";
 import GradeTracker from "./grade-tracker";
 import { BrandLockup, BrandLogo } from "./logo";
 import { buildTestPlan, isSingleTopicPaper, topicLimitFor, type TestMode } from "./test-policy";
 
-type Stage = "loading" | "signin" | "recovery-code" | "account" | "premium" | "admin" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "grades" | "setup" | "ready" | "paper" | "test" | "answers" | "result";
+type Stage = "loading" | "signin" | "recovery-code" | "account" | "premium" | "admin" | "community" | "onboarding" | "home" | "reports" | "status" | "mistakes" | "grades" | "setup" | "ready" | "paper" | "test" | "answers" | "result";
 type DeliveryMode = "online" | "pdf";
 type Answers = Record<string, string>;
 type TopicScore = { code: string; title: string; percent: number; possible: number; earned: number };
@@ -24,7 +25,7 @@ type PremiumRequest = {
   createdAt: string; reviewedAt: string | null;
 };
 type MeData = {
-  user: { email: string; displayName: string; isAdmin: boolean };
+  user: { email: string; displayName: string; isAdmin: boolean; sanction?: { kind: "suspended" | "banned"; until: string | null; reason: string } | null };
   premium: boolean;
   premiumRequest: PremiumRequest | null;
   selectedSubjects: string[];
@@ -198,7 +199,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     if (!response.ok) throw new Error("Could not load your account.");
     const data = await response.json() as MeData;
     setMe(data);
-    if (nextStage) setStage(data.selectedSubjects.length === 6 ? "home" : "onboarding");
+    if (nextStage) setStage(data.user.sanction ? "account" : data.premium && window.location.hash.startsWith("#community") ? "community" : data.selectedSubjects.length === 6 ? "home" : "onboarding");
     return data;
   };
 
@@ -274,7 +275,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
       if (!active) return;
       if (!data) { setStage("signin"); return; }
       setMe(data);
-      setStage(data.selectedSubjects?.length === 6 ? "home" : "onboarding");
+      setStage(data.user.sanction ? "account" : data.premium && window.location.hash.startsWith("#community") ? "community" : data.selectedSubjects?.length === 6 ? "home" : "onboarding");
     }).catch(() => { if (active) { setAuthError("Could not reach the account service. Please reload and try again."); setStage("signin"); } });
     return () => { active = false; };
   }, []);
@@ -468,7 +469,8 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     return () => window.clearInterval(timer);
   }, [stage, testMode, timeLimit]);
 
-  const goHome = () => { setStage("home"); window.scrollTo({ top: 0 }); };
+  const goHome = () => { window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`); setStage("home"); window.scrollTo({ top: 0 }); };
+  const openCommunity = () => { window.history.replaceState(null, "", "#community"); setStage("community"); window.scrollTo({ top: 0 }); };
   const answered = questions.filter((question) => (answers[question.id] ?? "").trim()).length;
   const selectedCatalog = (me?.selectedSubjects ?? []).map((id) => subjectCatalog.find((item) => item.id === id)).filter(Boolean);
   const allMistakes = me?.attempts.flatMap((attempt) => attempt.mistakes.map((mistake) => ({ ...mistake, attempt }))) ?? [];
@@ -477,7 +479,9 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   if (stage === "loading") return <main className="loading-screen"><BrandLogo/><strong>Loading your learning profile…</strong></main>;
   if (stage === "signin") return <main className="loading-screen auth-screen"><div className="auth-card"><BrandLogo/><span className="eyebrow">{authMode === "reset" ? "ACCOUNT RECOVERY" : "STUDENT ACCOUNT"}</span><h1>{authMode === "login" ? "Log in" : authMode === "register" ? "Create account" : "Reset password"}</h1><p>{authMode === "reset" ? "Enter the recovery code that was issued by this site, then choose a new password." : "Use a site username and password to save your subjects, test results and Premium access."}</p>{authMode !== "reset" && <div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); setAuthNotice(""); }}>Log in</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); setAuthNotice(""); }}>Sign up</button></div>}<form className="account-form" onSubmit={submitAuth}><label><span>Username</span><input autoComplete="username" value={authUsername} onChange={(event) => setAuthUsername(event.target.value)} placeholder="Lowercase letters, numbers or underscores" minLength={3} maxLength={24} required/></label>{authMode === "reset" && <label><span>Recovery code</span><input autoComplete="off" value={authRecoveryCode} onChange={(event) => setAuthRecoveryCode(event.target.value.toUpperCase())} placeholder="XXXXX-XXXXX-XXXXX-XXXXX" required/></label>}<label><span>{authMode === "reset" ? "New password" : "Password"}</span><input type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="At least 8 characters" minLength={8} maxLength={128} required/></label>{authMode === "register" && authUsername.trim().toLowerCase() === "justinnamwoo1003" && <label><span>One-time administrator setup code</span><input type="password" autoComplete="off" value={adminSetupCode} onChange={(event) => setAdminSetupCode(event.target.value)} placeholder="Required only for initial admin registration" required/></label>}{authNotice && <div className="auth-notice" role="status">{authNotice}</div>}{authError && <div className="auth-error" role="alert">{authError}</div>}<button className="primary-button" disabled={authBusy}>{authBusy ? "Working…" : authMode === "login" ? "Log in" : authMode === "register" ? "Create account" : "Reset password"} <span>→</span></button></form>{authMode === "login" && <button type="button" className="forgot-link" onClick={() => { setAuthMode("reset"); setAuthError(""); setAuthNotice(""); setAuthPassword(""); }}>Forgot password?</button>}{authMode === "reset" && <button type="button" className="forgot-link" onClick={() => { setAuthMode("login"); setAuthError(""); setAuthRecoveryCode(""); setAuthPassword(""); }}>← Back to login</button>}{authMode === "register" && <small>You will receive a one-time recovery code after registration. Save it somewhere private.</small>}</div></main>;
   if (stage === "recovery-code") return <main className="loading-screen auth-screen"><div className="auth-card recovery-card"><BrandLogo/><span className="eyebrow">SAVE THIS ONCE</span><h1>Your recovery code</h1><p>This code is the only self-service way to reset your password. Store it somewhere private; it will not be shown again.</p><code>{issuedRecoveryCode}</code><button className="primary-button" onClick={() => void loadMe()}>I saved the code <span>→</span></button></div></main>;
+  if (me?.user.sanction) return <main className="loading-screen auth-screen"><div className="auth-card sanction-card"><BrandLogo/><span className="eyebrow">ACCOUNT RESTRICTED</span><h1>{me.user.sanction.kind === "banned" ? "Account permanently suspended" : "Account temporarily suspended"}</h1><p>{me.user.sanction.reason}</p>{me.user.sanction.until && <strong>Access returns {new Date(me.user.sanction.until).toLocaleString("en-GB")}</strong>}<button className="secondary-button" onClick={() => void logOut()}>Log out</button></div></main>;
   if (stage === "onboarding") return <SubjectOnboarding name={me?.user.displayName ?? initialName} current={me?.selectedSubjects ?? []} currentLevels={me?.subjectLevels ?? {}} onSaved={async () => { await loadMe(); }} />;
+  if (stage === "community" && me?.premium) return <CommunityClient username={me.user.email} isAdmin={me.user.isAdmin} onBack={goHome}/>;
 
   return <main className="app-shell">
     <header className="topbar">
@@ -487,6 +491,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
         <button className={`nav-link ${stage === "reports" ? "active" : ""}`} onClick={() => setStage("reports")}>Reports</button>
         {me?.premium && <button className={`nav-link ${stage === "status" ? "active" : ""}`} onClick={() => setStage("status")}>Current status</button>}
         {me?.premium && <button className={`nav-link ${stage === "grades" ? "active" : ""}`} onClick={() => setStage("grades")}>Grades</button>}
+        {me?.premium && <button className="commons-nav-link" onClick={openCommunity}>IB Commons</button>}
         <button className={`nav-link ${stage === "mistakes" ? "active" : ""}`} onClick={() => setStage("mistakes")}>Mistake bank</button>
         {me?.premium && <span className="premium-access">★ Premium Access</span>}
         {!me?.premium && <button className={`account-link ${stage === "premium" ? "active" : ""}`} onClick={() => setStage("premium")}>{me?.premiumRequest?.status === "pending" ? "Payment pending" : "Apply for Premium"}</button>}

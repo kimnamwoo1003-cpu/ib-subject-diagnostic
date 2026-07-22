@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { ensureSchema, getDb } from "../../../../db";
-import { accounts } from "../../../../db/schema";
+import { accounts, profiles } from "../../../../db/schema";
+import { activeSanction } from "../../../account-status";
 import { startSession } from "../../../auth-session";
 import { normalizeUsername, verifyPassword } from "../../../password-auth";
 import { apiJson, apiOptions } from "../../../api-response";
@@ -19,6 +20,10 @@ export async function POST(request: Request) {
     if (!account || !(await verifyPassword(password, account.passwordSalt, account.passwordHash, String(env.AUTH_PEPPER ?? "")))) {
       return apiJson(request, { error: "The username or password is incorrect." }, { status: 401 });
     }
+    const [profile] = await db.select().from(profiles).where(eq(profiles.email, username)).limit(1);
+    const sanction = activeSanction(profile);
+    if (sanction) return apiJson(request, { error: sanction.kind === "banned" ? "This account has been permanently suspended." : `This account is suspended until ${new Date(sanction.until!).toLocaleString("en-GB")}.`, sanction }, { status: 403 });
+    if (profile?.accountStatus === "suspended") await db.update(profiles).set({ accountStatus: "active", suspendedUntil: null, suspensionReason: "", updatedAt: new Date().toISOString() }).where(eq(profiles.email, username));
     const session = await startSession(username);
     const response = apiJson(request, { user: { username }, token: session.token });
     response.headers.set("set-cookie", session.cookie);

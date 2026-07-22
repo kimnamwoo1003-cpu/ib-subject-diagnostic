@@ -23,6 +23,10 @@ export const profiles = sqliteTable("profiles", {
   premium: integer("premium", { mode: "boolean" }).notNull().default(false),
   selectedSubjects: text("selected_subjects").notNull().default("[]"),
   subjectLevels: text("subject_levels").notNull().default("{}"),
+  accountStatus: text("account_status").notNull().default("active"),
+  suspendedUntil: text("suspended_until"),
+  suspensionReason: text("suspension_reason").notNull().default(""),
+  moderationStrikes: integer("moderation_strikes").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
@@ -119,4 +123,130 @@ export const gradeGoals = sqliteTable("grade_goals", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [
   uniqueIndex("grade_goals_user_subject_level_idx").on(table.userEmail, table.subjectId, table.level),
+]);
+
+export const communityProfiles = sqliteTable("community_profiles", {
+  userEmail: text("user_email").primaryKey(),
+  bio: text("bio").notNull().default(""),
+  school: text("school").notNull().default(""),
+  graduationYear: integer("graduation_year"),
+  avatarColor: text("avatar_color").notNull().default("indigo"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const communityPosts = sqliteTable("community_posts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  authorEmail: text("author_email").notNull(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  category: text("category").notNull(),
+  tags: text("tags").notNull().default("[]"),
+  status: text("status").notNull().default("visible"),
+  moderationState: text("moderation_state").notNull().default("clean"),
+  moderationSignals: text("moderation_signals").notNull().default("[]"),
+  pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
+  locked: integer("locked", { mode: "boolean" }).notNull().default(false),
+  viewCount: integer("view_count").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("community_posts_status_date_idx").on(table.status, table.createdAt),
+  index("community_posts_author_date_idx").on(table.authorEmail, table.createdAt),
+  index("community_posts_category_date_idx").on(table.category, table.createdAt),
+]);
+
+export const communityComments = sqliteTable("community_comments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  postId: integer("post_id").notNull(),
+  authorEmail: text("author_email").notNull(),
+  parentId: integer("parent_id"),
+  body: text("body").notNull(),
+  status: text("status").notNull().default("visible"),
+  moderationState: text("moderation_state").notNull().default("clean"),
+  moderationSignals: text("moderation_signals").notNull().default("[]"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("community_comments_post_date_idx").on(table.postId, table.createdAt),
+  index("community_comments_author_date_idx").on(table.authorEmail, table.createdAt),
+]);
+
+export const communityReactions = sqliteTable("community_reactions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userEmail: text("user_email").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: integer("target_id").notNull(),
+  reactionType: text("reaction_type").notNull().default("like"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  uniqueIndex("community_reactions_unique_idx").on(table.userEmail, table.targetType, table.targetId, table.reactionType),
+  index("community_reactions_target_idx").on(table.targetType, table.targetId),
+]);
+
+export const communityBookmarks = sqliteTable("community_bookmarks", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userEmail: text("user_email").notNull(),
+  postId: integer("post_id").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  uniqueIndex("community_bookmarks_unique_idx").on(table.userEmail, table.postId),
+]);
+
+export const communityFollows = sqliteTable("community_follows", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  followerEmail: text("follower_email").notNull(),
+  followingEmail: text("following_email").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  uniqueIndex("community_follows_unique_idx").on(table.followerEmail, table.followingEmail),
+]);
+
+export const communityReports = sqliteTable("community_reports", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  reporterEmail: text("reporter_email").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: integer("target_id").notNull(),
+  reason: text("reason").notNull(),
+  detail: text("detail").notNull().default(""),
+  status: text("status").notNull().default("pending"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  uniqueIndex("community_reports_unique_idx").on(table.reporterEmail, table.targetType, table.targetId),
+  index("community_reports_status_date_idx").on(table.status, table.createdAt),
+]);
+
+export const moderationCases = sqliteTable("moderation_cases", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  source: text("source").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: integer("target_id").notNull(),
+  targetAuthor: text("target_author").notNull(),
+  reason: text("reason").notNull(),
+  severity: text("severity").notNull(),
+  signals: text("signals").notNull().default("[]"),
+  status: text("status").notNull().default("pending"),
+  reportedBy: text("reported_by"),
+  reviewedBy: text("reviewed_by"),
+  reviewedAt: text("reviewed_at"),
+  adminNote: text("admin_note").notNull().default(""),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("moderation_cases_status_date_idx").on(table.status, table.createdAt),
+  index("moderation_cases_author_date_idx").on(table.targetAuthor, table.createdAt),
+]);
+
+export const communityNotifications = sqliteTable("community_notifications", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  userEmail: text("user_email").notNull(),
+  type: text("type").notNull(),
+  actorEmail: text("actor_email"),
+  postId: integer("post_id"),
+  commentId: integer("comment_id"),
+  message: text("message").notNull(),
+  read: integer("read", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("community_notifications_user_date_idx").on(table.userEmail, table.createdAt),
 ]);
