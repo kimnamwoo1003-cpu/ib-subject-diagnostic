@@ -486,21 +486,28 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   return <main className="app-shell">
     <header className="topbar">
       <button className="brand" onClick={goHome} aria-label="Go to dashboard"><BrandLockup/></button>
-      <nav className="topbar-actions">
+      <nav className="topbar-nav" aria-label="Main navigation">
         <button className={`nav-link ${stage === "home" ? "active" : ""}`} onClick={goHome}>Dashboard</button>
         <button className={`nav-link ${stage === "reports" ? "active" : ""}`} onClick={() => setStage("reports")}>Reports</button>
-        {me?.premium && <button className={`nav-link ${stage === "status" ? "active" : ""}`} onClick={() => setStage("status")}>Current status</button>}
+        {me?.premium && <button className={`nav-link ${stage === "status" ? "active" : ""}`} onClick={() => setStage("status")}>Status</button>}
         {me?.premium && <button className={`nav-link ${stage === "grades" ? "active" : ""}`} onClick={() => setStage("grades")}>Grades</button>}
-        {me?.premium && <button className="commons-nav-link" onClick={openCommunity}>IB Commons</button>}
-        <button className={`nav-link ${stage === "mistakes" ? "active" : ""}`} onClick={() => setStage("mistakes")}>Mistake bank</button>
-        {me?.premium && <span className="premium-access">★ Premium Access</span>}
-        {!me?.premium && <button className={`account-link ${stage === "premium" ? "active" : ""}`} onClick={() => setStage("premium")}>{me?.premiumRequest?.status === "pending" ? "Payment pending" : "Apply for Premium"}</button>}
-        <ThemePicker value={theme} onChange={changeTheme}/>
-        {me?.user.isAdmin && <button className={`admin-link ${stage === "admin" ? "active" : ""}`} type="button" onClick={() => setStage("admin")}>Admin</button>}
-        <span className="account-identity" title={me?.user.email}>{me?.user.email}</span>
-        <button className={`account-link ${stage === "account" ? "active" : ""}`} type="button" onClick={() => { setIssuedRecoveryCode(""); setAuthError(""); setStage("account"); }}>Account</button>
-        <button className="signout-link" type="button" onClick={() => void logOut()}>Log out</button>
+        <button className={`nav-link ${stage === "mistakes" ? "active" : ""}`} onClick={() => setStage("mistakes")}>Mistakes</button>
+        {me?.premium && <button className="commons-nav-link" onClick={openCommunity}>Commons</button>}
       </nav>
+      <div className="topbar-user">
+        <ThemePicker value={theme} onChange={changeTheme}/>
+        <details className="account-menu">
+          <summary aria-label="Open account menu"><span className="account-avatar">{(me?.user.displayName ?? "S").slice(0, 1).toUpperCase()}</span><span className="account-summary"><strong>{me?.user.displayName}</strong><small>{me?.premium ? "Premium member" : "Free member"}</small></span><i>⌄</i></summary>
+          <div className="account-menu-panel">
+            <header><span>Signed in as</span><strong title={me?.user.email}>{me?.user.email}</strong></header>
+            {me?.premium && <span className="premium-access">★ Premium Access</span>}
+            {!me?.premium && <button className={`account-link ${stage === "premium" ? "active" : ""}`} onClick={() => setStage("premium")}>{me?.premiumRequest?.status === "pending" ? "Payment pending" : "Apply for Premium"}</button>}
+            {me?.user.isAdmin && <button className={`admin-link ${stage === "admin" ? "active" : ""}`} type="button" onClick={() => setStage("admin")}>Admin console</button>}
+            <button className={`account-link ${stage === "account" ? "active" : ""}`} type="button" onClick={() => { setIssuedRecoveryCode(""); setAuthError(""); setStage("account"); }}>Account settings</button>
+            <button className="signout-link" type="button" onClick={() => void logOut()}>Log out</button>
+          </div>
+        </details>
+      </div>
     </header>
 
     {stage === "home" && <div className="page-container home-page">

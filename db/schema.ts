@@ -127,10 +127,12 @@ export const gradeGoals = sqliteTable("grade_goals", {
 
 export const communityProfiles = sqliteTable("community_profiles", {
   userEmail: text("user_email").primaryKey(),
+  nickname: text("nickname").notNull().default(""),
   bio: text("bio").notNull().default(""),
   school: text("school").notNull().default(""),
   graduationYear: integer("graduation_year"),
   avatarColor: text("avatar_color").notNull().default("indigo"),
+  avatarKey: text("avatar_key"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

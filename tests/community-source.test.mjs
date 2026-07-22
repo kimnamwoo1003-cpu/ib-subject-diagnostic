@@ -20,3 +20,30 @@ test("grade upload uses an English custom control instead of a visible native in
   assert.match(tracker, /className="custom-file-input"/);
   assert.match(css, /\.custom-file-input\{[^}]*opacity:0/);
 });
+
+test("deleted community content never reappears for its author or an administrator", async () => {
+  const { canShowCommunityItem } = await import("../app/community-visibility.ts");
+  assert.equal(canShowCommunityItem("deleted", false, false), false);
+  assert.equal(canShowCommunityItem("deleted", true, false), false);
+  assert.equal(canShowCommunityItem("deleted", false, true), false);
+  assert.equal(canShowCommunityItem("visible", false, false), true);
+  assert.equal(canShowCommunityItem("hidden", true, false), true);
+  assert.equal(canShowCommunityItem("hidden", false, true), true);
+});
+
+test("community profiles support verified admin badges, nicknames and uploaded avatars", async () => {
+  const [client, posts, profile, avatar, schema] = await Promise.all([
+    readFile(new URL("../app/community-client.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/community/posts/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/community/profile/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/community/profile/avatar/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(client, /admin-author-badge/);
+  assert.match(client, /name="nickname"/);
+  assert.match(client, /name="avatar"/);
+  assert.match(posts, /isAdminUsername\(post\.authorEmail\)/);
+  assert.match(profile, /nickname/);
+  assert.match(avatar, /community-avatars/);
+  assert.match(schema, /avatarKey/);
+});

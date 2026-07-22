@@ -133,10 +133,12 @@ export async function ensureSchema() {
     )`),
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS community_profiles (
       user_email text PRIMARY KEY NOT NULL,
+      nickname text DEFAULT '' NOT NULL,
       bio text DEFAULT '' NOT NULL,
       school text DEFAULT '' NOT NULL,
       graduation_year integer,
       avatar_color text DEFAULT 'indigo' NOT NULL,
+      avatar_key text,
       created_at text DEFAULT CURRENT_TIMESTAMP NOT NULL,
       updated_at text DEFAULT CURRENT_TIMESTAMP NOT NULL
     )`),
@@ -262,6 +264,8 @@ export async function ensureSchema() {
     "ALTER TABLE test_attempts ADD COLUMN criteria_breakdown text DEFAULT '[]' NOT NULL",
     "ALTER TABLE test_attempts ADD COLUMN question_ids text DEFAULT '[]' NOT NULL",
     "ALTER TABLE test_attempts ADD COLUMN difficulty_trail text DEFAULT '[]' NOT NULL",
+    "ALTER TABLE community_profiles ADD COLUMN nickname text DEFAULT '' NOT NULL",
+    "ALTER TABLE community_profiles ADD COLUMN avatar_key text",
   ]) {
     try { await env.DB.prepare(statement).run(); } catch { /* column already exists */ }
   }

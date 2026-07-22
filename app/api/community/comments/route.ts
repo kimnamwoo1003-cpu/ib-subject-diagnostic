@@ -3,6 +3,8 @@ import { communityComments, communityPosts, communityProfiles, communityReaction
 import { apiJson, apiOptions } from "../../../api-response";
 import { moderateCommunityText } from "../../../community-moderation";
 import { notify, requireCommunityUser } from "../../../community-server";
+import { canShowCommunityItem } from "../../../community-visibility";
+import { isAdminUsername } from "../../../server-auth";
 
 export const OPTIONS = apiOptions;
 
@@ -15,7 +17,7 @@ export async function GET(request: Request) {
     db.select().from(communityReactions).where(eq(communityReactions.targetType, "comment")), db.select().from(communityProfiles), db.select({ email: profiles.email, displayName: profiles.displayName }).from(profiles),
   ]);
   const personMap = new Map(people.map((person) => [person.userEmail, person])); const accountMap = new Map(accounts.map((account) => [account.email, account]));
-  const comments = rows.filter((row) => row.status === "visible" || row.authorEmail === user.email || user.isAdmin).map((row) => ({ ...row, body: row.status === "deleted" ? "Comment deleted" : row.body, own: row.authorEmail === user.email, author: { username: row.authorEmail, displayName: accountMap.get(row.authorEmail)?.displayName ?? row.authorEmail, avatarColor: personMap.get(row.authorEmail)?.avatarColor ?? "indigo" }, likeCount: reactions.filter((reaction) => reaction.targetId === row.id && reaction.reactionType === "like").length, liked: reactions.some((reaction) => reaction.targetId === row.id && reaction.userEmail === user.email && reaction.reactionType === "like") }));
+  const comments = rows.filter((row) => canShowCommunityItem(row.status, row.authorEmail === user.email, user.isAdmin)).map((row) => { const person = personMap.get(row.authorEmail); return ({ ...row, own: row.authorEmail === user.email, author: { username: row.authorEmail, displayName: person?.nickname?.trim() || accountMap.get(row.authorEmail)?.displayName || row.authorEmail, isAdmin: isAdminUsername(row.authorEmail), avatarColor: person?.avatarColor ?? "indigo", hasAvatar: Boolean(person?.avatarKey), avatarVersion: person?.avatarKey ?? "" }, likeCount: reactions.filter((reaction) => reaction.targetId === row.id && reaction.reactionType === "like").length, liked: reactions.some((reaction) => reaction.targetId === row.id && reaction.userEmail === user.email && reaction.reactionType === "like") }); });
   return apiJson(request, { comments });
 }
 

@@ -3,7 +3,8 @@ import { communityBookmarks, communityComments, communityFollows, communityNotif
 import { apiJson, apiOptions } from "../../../api-response";
 import { COMMUNITY_CATEGORIES, moderateCommunityText } from "../../../community-moderation";
 import { cleanTags, notify, requireCommunityUser } from "../../../community-server";
-import { safeJson } from "../../../server-auth";
+import { canShowCommunityItem } from "../../../community-visibility";
+import { isAdminUsername, safeJson } from "../../../server-auth";
 
 export const OPTIONS = apiOptions;
 
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
   ]);
   const profilesByEmail = new Map(communityPeople.map((profile) => [profile.userEmail, profile]));
   const accountsByEmail = new Map(accountPeople.map((profile) => [profile.email, profile]));
-  let posts = rawPosts.filter((post) => post.status === "visible" || post.authorEmail === user.email || user.isAdmin);
+  let posts = rawPosts.filter((post) => canShowCommunityItem(post.status, post.authorEmail === user.email, user.isAdmin));
   if (category !== "all") posts = posts.filter((post) => post.category === category);
   if (query) posts = posts.filter((post) => `${post.title} ${post.body} ${post.tags}`.toLowerCase().includes(query));
   if (filter === "bookmarks") posts = posts.filter((post) => bookmarks.some((row) => row.userEmail === user.email && row.postId === post.id));
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
     const likeCount = reactions.filter((row) => row.targetType === "post" && row.targetId === post.id && row.reactionType === "like").length;
     const commentCount = comments.filter((row) => row.postId === post.id && row.status === "visible").length;
     return { ...post, tags: safeJson<string[]>(post.tags, []), moderationSignals: post.authorEmail === user.email || user.isAdmin ? safeJson(post.moderationSignals, []) : [],
-      author: { username: post.authorEmail, displayName: account?.displayName ?? post.authorEmail, bio: person?.bio ?? "", school: person?.school ?? "", graduationYear: person?.graduationYear ?? null, avatarColor: person?.avatarColor ?? "indigo", selectedSubjects: safeJson<string[]>(account?.selectedSubjects ?? "[]", []), subjectLevels: safeJson(account?.subjectLevels ?? "{}", {}) },
+      author: { username: post.authorEmail, displayName: person?.nickname?.trim() || account?.displayName || post.authorEmail, isAdmin: isAdminUsername(post.authorEmail), bio: person?.bio ?? "", school: person?.school ?? "", graduationYear: person?.graduationYear ?? null, avatarColor: person?.avatarColor ?? "indigo", hasAvatar: Boolean(person?.avatarKey), avatarVersion: person?.avatarKey ?? "", selectedSubjects: safeJson<string[]>(account?.selectedSubjects ?? "[]", []), subjectLevels: safeJson(account?.subjectLevels ?? "{}", {}) },
       likeCount, commentCount, liked: reactions.some((row) => row.userEmail === user.email && row.targetType === "post" && row.targetId === post.id && row.reactionType === "like"),
       bookmarked: bookmarks.some((row) => row.userEmail === user.email && row.postId === post.id), followed: follows.some((row) => row.followerEmail === user.email && row.followingEmail === post.authorEmail), own: post.authorEmail === user.email };
   };
@@ -99,7 +100,10 @@ export async function PATCH(request: Request) {
     await db.update(communityPosts).set(payload.action === "pin" ? { pinned: !post.pinned } : { locked: !post.locked }).where(eq(communityPosts.id, postId)); return apiJson(request, { updated: true });
   }
   if (post.authorEmail !== user.email && !user.isAdmin) return apiJson(request, { error: "You can only change your own post." }, { status: 403 });
-  if (payload.action === "delete") { await db.update(communityPosts).set({ status: "deleted", updatedAt: new Date().toISOString() }).where(eq(communityPosts.id, postId)); return apiJson(request, { deleted: true }); }
+  if (payload.action === "delete") {
+    if (post.status !== "deleted") await db.update(communityPosts).set({ status: "deleted", body: "", updatedAt: new Date().toISOString() }).where(eq(communityPosts.id, postId));
+    return apiJson(request, { deleted: true });
+  }
   if (payload.action === "edit") {
     const title = String(payload.title ?? post.title).trim(); const body = String(payload.body ?? post.body).trim(); const category = String(payload.category ?? post.category);
     if (title.length < 5 || title.length > 120 || body.length < 10 || body.length > 5000 || !COMMUNITY_CATEGORIES.some((item) => item.id === category)) return apiJson(request, { error: "Check the title, post length and category." }, { status: 400 });
