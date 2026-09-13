@@ -2,6 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import AdminClient from "./admin/admin-client";
+import { getAptitudeQuestion } from "./aptitude-quiz";
 import CommunityClient from "./community-client";
 import { buildUniqueQuestionPool, getAssessmentCriteria, getPapers, getRelevantTopics, Level, Question, subjectCatalog, subjects } from "./data";
 import GradeTracker from "./grade-tracker";
@@ -184,6 +185,7 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const [savedResult, setSavedResult] = useState<{ percent: number; grade: number; comparison: Attempt | null; durationSeconds: number } | null>(null);
   const [saveError, setSaveError] = useState("");
   const [theme, setTheme] = useState<ThemeName>("blue");
+  const [subjectsMenuOpen, setSubjectsMenuOpen] = useState(false);
   const [levelSaving, setLevelSaving] = useState(false);
   const [levelSaveStatus, setLevelSaveStatus] = useState("");
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -518,18 +520,32 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     : <SubjectOnboarding name={me?.user.displayName ?? initialName} current={me?.selectedSubjects ?? []} currentLevels={me?.subjectLevels ?? {}} onSaved={async () => { await loadMe(); }} />;
   if (stage === "community" && me?.premium) return <CommunityClient username={me.user.email} isAdmin={me.user.isAdmin} onBack={goHome}/>;
 
-  return <main className="app-shell">
-    <header className="topbar">
+  return <div className="app-shell">
+    <aside className="app-sidebar">
       <button className="brand" onClick={goHome} aria-label="Go to dashboard"><BrandLockup/></button>
-      <nav className="topbar-nav" aria-label="Main navigation">
-        <button className={`nav-link ${stage === "home" ? "active" : ""}`} onClick={goHome}>Dashboard</button>
-        <button className={`nav-link ${stage === "reports" ? "active" : ""}`} onClick={() => setStage("reports")}>Reports</button>
-        {me?.premium && <button className={`nav-link ${stage === "status" ? "active" : ""}`} onClick={() => setStage("status")}>Status</button>}
-        {me?.premium && <button className={`nav-link ${stage === "grades" ? "active" : ""}`} onClick={() => setStage("grades")}>Grades</button>}
-        <button className={`nav-link ${stage === "mistakes" ? "active" : ""}`} onClick={() => setStage("mistakes")}>Mistakes</button>
-        {me?.premium && <button className="commons-nav-link" onClick={openCommunity}>Commons</button>}
+      <nav className="sidebar-nav" aria-label="Main navigation">
+        <button className={`sidebar-link ${stage === "home" ? "active" : ""}`} onClick={goHome}><span className="sidebar-icon">⌂</span>Home</button>
+        <div className="sidebar-group">
+          <button type="button" className="sidebar-link sidebar-group-toggle" onClick={() => setSubjectsMenuOpen((open) => !open)} aria-expanded={subjectsMenuOpen}><span className="sidebar-icon">▤</span>My Subjects<i className={`sidebar-caret ${subjectsMenuOpen ? "open" : ""}`}>⌄</i></button>
+          {subjectsMenuOpen && <div className="sidebar-sublist">
+            {selectedCatalog.map((choice) => {
+              if (!choice) return null;
+              const active = subjects.find((item) => item.id === choice.id);
+              return <button type="button" key={choice.id} className={`sidebar-subject-row ${freeLocked ? "locked-subject" : ""}`} disabled={!active} onClick={() => active && chooseSubject(active.id)}>
+                <span className="sidebar-subject-badge" style={active ? { "--subject": active.color, "--subject-soft": active.softColor } as React.CSSProperties : undefined}>{active?.shortName ?? choice.name.split(" ").map((word) => word[0]).join("").slice(0, 3)}</span>
+                <span className="sidebar-subject-copy"><strong>{choice.name}</strong><small>{me?.subjectLevels?.[choice.id] ?? (choice.levels.includes("SL") ? "SL" : "HL")}</small></span>
+              </button>;
+            })}
+            <button type="button" className="sidebar-sublist-manage" onClick={() => setStage("onboarding")}>Change subjects →</button>
+          </div>}
+        </div>
+        <button className={`sidebar-link ${stage === "reports" ? "active" : ""}`} onClick={() => setStage("reports")}><span className="sidebar-icon">▥</span>Reports</button>
+        <button className={`sidebar-link ${stage === "mistakes" ? "active" : ""}`} onClick={() => setStage("mistakes")}><span className="sidebar-icon">✕</span>Mistakes</button>
+        {me?.premium && <button className={`sidebar-link ${stage === "status" ? "active" : ""}`} onClick={() => setStage("status")}><span className="sidebar-icon">◔</span>Status</button>}
+        {me?.premium && <button className={`sidebar-link ${stage === "grades" ? "active" : ""}`} onClick={() => setStage("grades")}><span className="sidebar-icon">◈</span>Grades</button>}
+        {me?.premium && <button className="sidebar-link commons-sidebar-link" onClick={openCommunity}><span className="sidebar-icon">◎</span>Commons</button>}
       </nav>
-      <div className="topbar-user">
+      <div className="sidebar-footer">
         <ThemePicker value={theme} onChange={changeTheme}/>
         <details className="account-menu">
           <summary aria-label="Open account menu"><span className="account-avatar">{(me?.user.displayName ?? "S").slice(0, 1).toUpperCase()}</span><span className="account-summary"><strong>{me?.user.displayName}</strong><small>{me?.premium ? "Premium member" : "Free member"}</small></span><i>⌄</i></summary>
@@ -543,19 +559,11 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
           </div>
         </details>
       </div>
-    </header>
+    </aside>
 
+    <main className="app-main">
     {stage === "home" && <div className="page-container home-page">
       <section className="dashboard-hero"><div><span className="eyebrow">WELCOME BACK</span><h1>{me?.user.displayName ?? initialName}</h1><p>Your six IB subjects, progress checks and next revision priorities in one place.</p></div><div className={`membership-card ${me?.premium ? "premium" : ""}`}><span>{me?.premium ? "PREMIUM MEMBER" : "FREE ACCOUNT"}</span><strong>{me?.premium ? "Full diagnostic access" : "Quick diagnostics"}</strong><small>{me?.premium ? "Monthly tests · growth reports · revision queue · mistake bank" : "An admin can enable Premium for this account."}</small></div></section>
-
-      <section className="section-heading compact"><div><span className="step-label">01</span><h2>Your six subjects</h2></div><button className="quiet-button" onClick={() => setStage("onboarding")}>Change subjects</button></section>
-      <div className="subject-grid selected-six">{selectedCatalog.map((choice) => {
-        if (!choice) return null;
-        const active = subjects.find((item) => item.id === choice.id);
-        return <button type="button" key={choice.id} className={`subject-card ${!active ? "coming" : ""} ${freeLocked ? "locked-subject" : ""}`} disabled={!active} onClick={() => active && chooseSubject(active.id)} style={active ? { "--subject": active.color, "--subject-soft": active.softColor } as React.CSSProperties : undefined}>
-          <span className="subject-badge">{active?.shortName ?? choice.name.split(" ").map((word) => word[0]).join("").slice(0, 3)}</span><span className="subject-card-copy"><span className="subject-title-row"><strong>{choice.name}</strong><em>{me?.subjectLevels?.[choice.id] ?? (choice.levels.includes("SL") ? "SL" : "HL")}</em></span><small>{freeLocked ? "Free test completed · Premium required for another attempt" : active ? active.description : choice.availability === "unavailable" ? "Selected subject · practical/portfolio assessment is not suitable for this diagnostic" : "Selected subject · test bank coming in the next expansion"}</small></span><span className="arrow">{freeLocked ? "LOCKED" : active ? "→" : choice.availability === "unavailable" ? "N/A" : "SOON"}</span>
-        </button>;
-      })}</div>
 
       {me?.premium ? <PremiumDashboard attempts={me.attempts} onReports={() => setStage("reports")} onMistakes={() => setStage("mistakes")} onStatus={() => setStage("status")} /> : <section className="premium-promo"><div><span className="eyebrow">{me?.premiumRequest?.status === "pending" ? "PAYMENT UNDER REVIEW" : freeLocked ? "FREE TEST USED" : "PREMIUM"}</span><h2>{me?.premiumRequest?.status === "pending" ? "Your Premium request is pending" : freeLocked ? "Your free diagnostic is complete" : "Unlock your full progress system"}</h2><p>{me?.premiumRequest?.status === "pending" ? "The administrator will verify your payment reference. Premium activates only after acceptance." : me?.premiumRequest?.status === "rejected" ? `Your previous request was not accepted${me.premiumRequest.adminNote ? `: ${me.premiumRequest.adminNote}` : ". You can submit corrected payment details."}` : freeLocked ? "All further subject tests are now locked until Premium is approved." : "Submit your payment confirmation for administrator review."}</p><button className="premium-apply-button" onClick={() => { setPremiumMessage(""); setStage("premium"); }}>{me?.premiumRequest?.status === "pending" ? "View request status" : me?.premiumRequest?.status === "rejected" ? "Resubmit payment details" : "Apply for Premium"} <span>→</span></button></div><ul><li>Unlimited adaptive retakes with different questions</li><li>Timed monthly tests with before/after comparison</li><li>Current-status map, revision queue and mistake bank</li></ul></section>}
     </div>}
@@ -621,7 +629,8 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
       <div className="result-actions"><button className="secondary-button" onClick={goHome}>Back to dashboard</button>{me?.premium ? <button className="primary-button" onClick={() => setStage("setup")}>Retake with different questions <span>→</span></button> : <span className="free-result-lock">Free attempt used · further tests are locked</span>}</div>
     </div>}
     <footer><span>IB Curivo</span><p>Independent practice tool. Not affiliated with or endorsed by the International Baccalaureate Organization.</p></footer>
-  </main>;
+    </main>
+  </div>;
 }
 
 type WizardLang = "en" | "ko" | "ja" | "fr" | "it" | "zh";
@@ -706,19 +715,7 @@ function OnboardingWizard({ name, onSaved }: { name: string; onSaved: () => Prom
   const toggleCandidate = (id: string) => setCandidates((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
 
   const startQuiz = () => {
-    const questions = candidates.map((subjectId) => {
-      const subject = subjects.find((item) => item.id === subjectId);
-      if (!subject) return { subjectId, question: null };
-      try {
-        const level: Level = subject.levels.includes("SL") ? "SL" : "HL";
-        const papers = getPapers(subject, level);
-        const paper = papers.find((item) => item.id === "concept") ?? papers[0];
-        const topics = getRelevantTopics(subject, level, paper);
-        const pool = buildUniqueQuestionPool(subject, level, paper, topics, false, "python", subjectId.length * 7 + 3, []);
-        const question = pool.find((item) => item.responseType === "mcq" && (item.difficultyLevel ?? 3) <= 2) ?? pool.find((item) => item.responseType === "mcq") ?? pool[0] ?? null;
-        return { subjectId, question };
-      } catch { return { subjectId, question: null }; }
-    });
+    const questions = candidates.map((subjectId) => ({ subjectId, question: getAptitudeQuestion(subjectId) }));
     setQuizQuestions(questions); setQuizIndex(0); setStep("quiz");
   };
 
@@ -779,14 +776,16 @@ function SubjectOnboarding({ name, current, currentLevels, onSaved }: { name: st
     if (selected.length >= 6) { setPendingSubject(id); return; }
     setSelected((items) => [...items, id]); setLevels((items) => ({ ...items, [id]: items[id] ?? defaultLevel(id) }));
   };
+  const hlCount = selected.filter((id) => levels[id] === "HL").length;
   const save = async () => {
+    if (hlCount < 3 || hlCount > 4) { setSaveError("You need to choose 3–4 subjects at HL!"); return; }
     setSaving(true); setSaveError("");
     const response = await apiFetch("/api/profile/subjects", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subjects: selected, subjectLevels: levels }) });
     if (response.ok) await onSaved(); else setSaveError((await response.json() as { error?: string }).error ?? "Could not save the subject selection.");
     setSaving(false);
   };
   const replaceSubject = (oldId: string) => { if (!pendingSubject) return; const nextId = pendingSubject; setSelected((items) => items.map((id) => id === oldId ? nextId : id)); setLevels((items) => ({ ...items, [nextId]: items[nextId] ?? defaultLevel(nextId) })); setPendingSubject(null); };
-  return <main className="onboarding-page"><div className="onboarding-header"><BrandLogo/><div><span className="eyebrow">SET UP YOUR DASHBOARD</span><h1>Choose your six IB subjects, {name}.</h1><p>Select each course and set its SL or HL level here. The saved level becomes the default whenever you open that subject.</p></div><div className="selection-counter"><strong>{selected.length}/6</strong><span>selected</span></div></div><div className="catalog-groups">{groups.map((group) => <section key={group}><h2>{group}</h2><div className="catalog-grid">{subjectCatalog.filter((subject) => subject.group === group).map((subject) => { const active = selected.includes(subject.id); const status = subject.availability ?? (subject.testAvailable ? "available" : "planned"); const availableLevels = (["SL", "HL"] as Level[]).filter((item) => subject.levels.includes(item)); return <div key={subject.id} className={`catalog-card ${active ? "selected" : ""}`}><button type="button" className="catalog-main" onClick={() => addOrRemove(subject.id)}><span className="catalog-check">{active ? "✓" : ""}</span><span><strong>{subject.name}</strong><small>{active ? `${levels[subject.id] ?? defaultLevel(subject.id)} selected` : subject.levels}</small></span><em className={status === "available" ? "available" : status === "unavailable" ? "unavailable" : "soon"}>{status === "available" ? "Test available" : status === "unavailable" ? "Unavailable" : "Coming next"}</em></button>{active && <div className="catalog-levels" aria-label={`${subject.name} course level`}>{availableLevels.map((item) => <button type="button" key={item} className={levels[subject.id] === item ? "active" : ""} onClick={() => setLevels((currentMap) => ({ ...currentMap, [subject.id]: item }))}>{item}</button>)}</div>}</div>; })}</div></section>)}</div>{saveError && <div className="inline-error">{saveError}</div>}<div className="onboarding-save"><div><strong>Choose exactly six subjects and levels</strong><span>You can change both later from the dashboard.</span></div><button className="primary-button" disabled={selected.length !== 6 || saving} onClick={() => void save()}>{saving ? "Saving…" : "Save my subjects"} <span>→</span></button></div>{pendingSubject && <div className="subject-swap-backdrop" role="dialog" aria-modal="true" aria-label="Replace a subject"><div className="subject-swap"><span className="eyebrow">REPLACE A SUBJECT</span><h2>Add {subjectCatalog.find((item) => item.id === pendingSubject)?.name}</h2><p>Choose which current subject to replace.</p><div>{selected.map((id) => <button type="button" key={id} onClick={() => replaceSubject(id)}>{subjectCatalog.find((item) => item.id === id)?.name ?? id}<span>Replace →</span></button>)}</div><button type="button" className="secondary-button" onClick={() => setPendingSubject(null)}>Cancel</button></div></div>}</main>;
+  return <main className="onboarding-page"><div className="onboarding-header"><BrandLogo/><div><span className="eyebrow">SET UP YOUR DASHBOARD</span><h1>Choose your six IB subjects, {name}.</h1><p>Select each course and set its SL or HL level here. The saved level becomes the default whenever you open that subject.</p></div><div className="selection-counter"><strong>{selected.length}/6</strong><span>selected</span></div></div>{selected.length === 6 && (hlCount < 3 || hlCount > 4) && <div className="inline-warning">You need to choose 3–4 subjects at HL! Currently {hlCount} HL selected.</div>}<div className="catalog-groups">{groups.map((group) => <section key={group}><h2>{group}</h2><div className="catalog-grid">{subjectCatalog.filter((subject) => subject.group === group).map((subject) => { const active = selected.includes(subject.id); const status = subject.availability ?? (subject.testAvailable ? "available" : "planned"); const availableLevels = (["SL", "HL"] as Level[]).filter((item) => subject.levels.includes(item)); return <div key={subject.id} className={`catalog-card ${active ? "selected" : ""}`}><button type="button" className="catalog-main" onClick={() => addOrRemove(subject.id)}><span className="catalog-check">{active ? "✓" : ""}</span><span><strong>{subject.name}</strong><small>{active ? `${levels[subject.id] ?? defaultLevel(subject.id)} selected` : subject.levels}</small></span><em className={status === "available" ? "available" : status === "unavailable" ? "unavailable" : "soon"}>{status === "available" ? "Test available" : status === "unavailable" ? "Unavailable" : "Coming next"}</em></button>{active && <div className="catalog-levels" aria-label={`${subject.name} course level`}>{availableLevels.map((item) => <button type="button" key={item} className={levels[subject.id] === item ? "active" : ""} onClick={() => setLevels((currentMap) => ({ ...currentMap, [subject.id]: item }))}>{item}</button>)}</div>}</div>; })}</div></section>)}</div>{saveError && <div className="inline-error">{saveError}</div>}<div className="onboarding-save"><div><strong>Choose exactly six subjects and levels</strong><span>You can change both later from the dashboard.</span></div><button className="primary-button" disabled={selected.length !== 6 || saving} onClick={() => void save()}>{saving ? "Saving…" : "Save my subjects"} <span>→</span></button></div>{pendingSubject && <div className="subject-swap-backdrop" role="dialog" aria-modal="true" aria-label="Replace a subject"><div className="subject-swap"><span className="eyebrow">REPLACE A SUBJECT</span><h2>Add {subjectCatalog.find((item) => item.id === pendingSubject)?.name}</h2><p>Choose which current subject to replace.</p><div>{selected.map((id) => <button type="button" key={id} onClick={() => replaceSubject(id)}>{subjectCatalog.find((item) => item.id === id)?.name ?? id}<span>Replace →</span></button>)}</div><button type="button" className="secondary-button" onClick={() => setPendingSubject(null)}>Cancel</button></div></div>}</main>;
 }
 
 export function PremiumApplication({ request, message, amount, method, payer, reference, note, busy, onAmount, onMethod, onPayer, onReference, onNote, onSubmit, onRefresh, onBack }: {
