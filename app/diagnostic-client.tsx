@@ -656,14 +656,31 @@ const scienceTrackIds = ["math", "math-ai", "physics", "chemistry", "biology", "
 const humanitiesTrackIds = ["economics", "business", "psychology", "history", "global-politics", "geography", "anthropology", "digital-society", "philosophy", "english-a", "english-b"];
 
 function Mascot({ mood = "happy" }: { mood?: "happy" | "excited" }) {
-  return <svg viewBox="0 0 120 120" className={`mascot mascot-${mood}`} role="img" aria-label="Curivo guide character">
-    <path className="mascot-antenna" d="M60 24V12"/>
-    <circle className="mascot-antenna-tip" cx="60" cy="10" r="4"/>
-    <circle className="mascot-body" cx="60" cy="66" r="42"/>
-    <circle className="mascot-cheek" cx="34" cy="76" r="7"/>
-    <circle className="mascot-cheek" cx="86" cy="76" r="7"/>
-    <g className="mascot-eyes"><circle cx="45" cy="60" r="5"/><circle cx="75" cy="60" r="5"/></g>
-    <path className="mascot-mouth" d="M46 80q14 12 28 0"/>
+  return <svg viewBox="0 0 160 176" className={`mascot mascot-${mood}`} role="img" aria-label="Curivo the dino guide">
+    <path className="mascot-tail" d="M118 136q27-8 34 8-11 8-31 2Z"/>
+    <ellipse className="mascot-limb" cx="60" cy="158" rx="16" ry="13"/>
+    <ellipse className="mascot-limb" cx="104" cy="158" rx="16" ry="13"/>
+    <ellipse className="mascot-limb" cx="30" cy="119" rx="13" ry="17" transform="rotate(-12 30 119)"/>
+    <ellipse className="mascot-limb" cx="134" cy="119" rx="13" ry="17" transform="rotate(12 134 119)"/>
+    <circle className="mascot-spike" cx="127" cy="54" r="9"/>
+    <circle className="mascot-spike" cx="136" cy="77" r="10"/>
+    <circle className="mascot-spike" cx="131" cy="101" r="9"/>
+    <circle className="mascot-body" cx="80" cy="95" r="62"/>
+    <ellipse className="mascot-belly" cx="80" cy="123" rx="33" ry="29"/>
+    <g className="mascot-cap">
+      <path d="M80 6 132 29 80 52 28 29Z"/>
+      <rect x="75" y="29" width="10" height="15" rx="2"/>
+      <path className="mascot-tassel" d="M118 33 125 59 117 66 110 59Z"/>
+    </g>
+    <path className="mascot-brow" d="M43 66l15-5"/>
+    <path className="mascot-brow" d="M102 61l15 5"/>
+    <g className="mascot-glasses">
+      <circle cx="58" cy="80" r="19"/>
+      <circle cx="102" cy="80" r="19"/>
+      <path d="M77 80h6"/>
+    </g>
+    <g className="mascot-eyes"><circle cx="58" cy="80" r="6"/><circle cx="102" cy="80" r="6"/></g>
+    <path className="mascot-mouth" d="M68 109q12 9 24 0"/>
   </svg>;
 }
 
