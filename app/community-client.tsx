@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
-const SITES_ORIGIN = "https://ib-subject-diagnostic.justinamwoo.chatgpt.site";
+const SITES_ORIGIN = "https://ibcurivo.com";
 const communityFetch = (path: string, init: RequestInit = {}) => { const token = typeof window !== "undefined" ? localStorage.getItem("ibsd-session-token") : null; const headers = new Headers(init.headers); if (token) headers.set("authorization", `Bearer ${token}`); const remote = typeof window !== "undefined" && window.location.hostname.endsWith("github.io"); return fetch(`${remote ? SITES_ORIGIN : ""}${path}`, { ...init, headers }); };
 type Author = { username: string; displayName: string; isAdmin: boolean; bio: string; school: string; graduationYear: number | null; avatarColor: string; hasAvatar: boolean; avatarVersion: string; selectedSubjects: string[] };
 type Post = { id: number; title: string; body: string; category: string; tags: string[]; status: string; moderationState: string; pinned: boolean; locked: boolean; viewCount: number; createdAt: string; author: Author; own: boolean; liked: boolean; bookmarked: boolean; followed: boolean; likeCount: number; commentCount: number };

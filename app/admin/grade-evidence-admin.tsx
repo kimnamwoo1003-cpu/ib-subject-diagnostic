@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { subjectCatalog } from "../data";
 
-const SITES_ORIGIN = "https://ib-subject-diagnostic.justinamwoo.chatgpt.site";
+const SITES_ORIGIN = "https://ibcurivo.com";
 const evidenceFetch = (path: string, init: RequestInit = {}) => {
   const token = typeof window !== "undefined" ? localStorage.getItem("ibsd-session-token") : null;
   const headers = new Headers(init.headers);

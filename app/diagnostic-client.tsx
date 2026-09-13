@@ -35,7 +35,7 @@ type MeData = {
   attempts: Attempt[];
 };
 
-const SITES_ORIGIN = "https://ib-subject-diagnostic.justinamwoo.chatgpt.site";
+const SITES_ORIGIN = "https://ibcurivo.com";
 const isStaticPages = () => typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
 const apiFetch = (path: string, init: RequestInit = {}) => {
   const token = typeof window !== "undefined" ? localStorage.getItem("ibsd-session-token") : null;

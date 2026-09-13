@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-const SITES_ORIGIN = "https://ib-subject-diagnostic.justinamwoo.chatgpt.site";
+const SITES_ORIGIN = "https://ibcurivo.com";
 const moderationFetch = (path: string, init: RequestInit = {}) => { const token = typeof window !== "undefined" ? localStorage.getItem("ibsd-session-token") : null; const headers = new Headers(init.headers); if (token) headers.set("authorization", `Bearer ${token}`); const remote = typeof window !== "undefined" && window.location.hostname.endsWith("github.io"); return fetch(`${remote ? SITES_ORIGIN : ""}${path}`, { ...init, headers }); };
 type Case = { id: number; source: string; targetType: string; targetId: number; targetAuthor: string; reason: string; severity: string; signals: Array<{ label: string }>; status: string; createdAt: string; target: null | { title: string | null; body: string; status: string }; reports: Array<{ id: number; reason: string; detail: string; reporterEmail: string }> };
 type Sanction = { username: string; accountStatus: string; suspendedUntil: string | null; suspensionReason: string; moderationStrikes: number };

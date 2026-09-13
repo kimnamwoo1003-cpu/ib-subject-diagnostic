@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { subjectCatalog, type Level } from "./data";
 import { assessmentComponents, gradeSummary } from "./grade-planning";
 
-const SITES_ORIGIN = "https://ib-subject-diagnostic.justinamwoo.chatgpt.site";
+const SITES_ORIGIN = "https://ibcurivo.com";
 const gradeFetch = (path: string, init: RequestInit = {}) => {
   const token = typeof window !== "undefined" ? localStorage.getItem("ibsd-session-token") : null;
   const headers = new Headers(init.headers);

@@ -7,7 +7,7 @@ import { BrandLockup } from "../logo";
 import GradeEvidenceAdmin from "./grade-evidence-admin";
 import CommunityAdmin from "./community-admin";
 
-const SITES_ORIGIN = "https://ib-subject-diagnostic.justinamwoo.chatgpt.site";
+const SITES_ORIGIN = "https://ibcurivo.com";
 const isStaticPages = () => typeof window !== "undefined" && window.location.hostname.endsWith("github.io");
 const adminFetch = (path: string, init: RequestInit = {}) => {
   const token = typeof window !== "undefined" ? localStorage.getItem("ibsd-session-token") : null;
