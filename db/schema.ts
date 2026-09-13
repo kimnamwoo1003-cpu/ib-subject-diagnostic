@@ -23,6 +23,8 @@ export const profiles = sqliteTable("profiles", {
   premium: integer("premium", { mode: "boolean" }).notNull().default(false),
   selectedSubjects: text("selected_subjects").notNull().default("[]"),
   subjectLevels: text("subject_levels").notNull().default("{}"),
+  grade: text("grade").notNull().default(""),
+  uiLanguage: text("ui_language").notNull().default("en"),
   accountStatus: text("account_status").notNull().default("active"),
   suspendedUntil: text("suspended_until"),
   suspensionReason: text("suspension_reason").notNull().default(""),

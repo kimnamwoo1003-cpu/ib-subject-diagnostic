@@ -476,3 +476,34 @@ button,input,select,textarea{font:inherit}
   .topbar-nav .nav-link,.topbar-nav .commons-nav-link{font-size:12px;padding:8px 10px}.home-page{padding-top:34px}.dashboard-hero{min-height:0;border-radius:22px}.dashboard-hero h1{font-size:38px}
   .commons-header{min-height:72px}.commons-layout{padding-top:18px}.thread-card{padding:17px 14px}.thread-copy h2{font-size:18px}
 }
+
+.wizard-page{width:min(680px,calc(100% - 40px));margin:0 auto;padding:64px 0 100px;display:flex;flex-direction:column;align-items:center;text-align:center}
+.mascot-wrap{animation:mascot-bob 3.2s ease-in-out infinite;margin-bottom:18px}
+.mascot{width:104px;height:104px}
+.mascot-body{fill:var(--subject-soft);stroke:var(--blue);stroke-width:3}
+.mascot-cheek{fill:color-mix(in srgb,var(--blue) 30%,#fff);opacity:.55}
+.mascot-eyes circle{fill:var(--ink);transform-origin:center;transform-box:fill-box;animation:mascot-blink 4.6s ease-in-out infinite}
+.mascot-mouth{fill:none;stroke:var(--blue);stroke-width:3;stroke-linecap:round}
+.mascot-antenna{fill:none;stroke:var(--blue);stroke-width:3}
+.mascot-antenna-tip{fill:var(--blue)}
+.mascot-excited .mascot-antenna-tip{animation:mascot-pulse 1s ease-in-out infinite}
+.mascot-excited .mascot-mouth{d:path("M44 78q16 16 32 0")}
+@keyframes mascot-bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes mascot-blink{0%,90%,100%{transform:scaleY(1)}95%{transform:scaleY(.15)}}
+@keyframes mascot-pulse{0%,100%{r:4}50%{r:6}}
+.speech-bubble{position:relative;max-width:520px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:20px 26px;box-shadow:0 16px 40px color-mix(in srgb,var(--blue) 8%,transparent);margin-bottom:26px}
+.speech-bubble:before{content:"";position:absolute;top:-9px;left:50%;transform:translateX(-50%) rotate(45deg);width:16px;height:16px;background:#fff;border-left:1px solid var(--line);border-top:1px solid var(--line)}
+.speech-bubble p{margin:0;font-size:16px;line-height:1.6;color:var(--ink);min-height:1.6em}
+.wizard-choices{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin-bottom:22px}
+.wizard-choices button{min-height:46px;padding:0 20px;border:1px solid var(--line);background:#fff;border-radius:12px;font-weight:800;font-size:13px;cursor:pointer;color:var(--ink)}
+.wizard-choices button.selected,.wizard-choices button:hover{border-color:var(--blue);color:var(--blue);background:var(--subject-soft)}
+.wizard-choices button:disabled{opacity:.5;cursor:not-allowed}
+.wizard-continue{margin-top:4px}
+.wizard-candidate-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;max-width:600px;margin-bottom:26px}
+.wizard-candidate-grid button{min-height:42px;padding:0 16px;border:1px solid var(--line);background:#fff;border-radius:99px;font-weight:750;font-size:12px;cursor:pointer;color:var(--ink)}
+.wizard-candidate-grid button.selected{border-color:var(--blue);background:var(--blue);color:#fff}
+.wizard-quiz{width:100%;max-width:560px;background:#fff;border:1px solid var(--line);border-radius:18px;padding:28px;text-align:left;margin-bottom:20px}
+.wizard-quiz h2{font-size:20px;margin:10px 0 20px}
+.wizard-quiz-response textarea{width:100%;border:1px solid var(--line);border-radius:12px;padding:14px;font:inherit;margin-bottom:14px}
+.wizard-recommend-list{list-style:none;padding:0;margin:0 0 26px;display:flex;flex-wrap:wrap;justify-content:center;gap:9px}
+.wizard-recommend-list li{padding:10px 16px;border-radius:99px;background:var(--subject-soft);color:var(--blue);font-weight:800;font-size:13px}

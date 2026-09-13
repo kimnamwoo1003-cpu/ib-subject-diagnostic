@@ -32,6 +32,8 @@ type MeData = {
   premiumRequest: PremiumRequest | null;
   selectedSubjects: string[];
   subjectLevels: Record<string, Level>;
+  grade: string;
+  uiLanguage: string;
   attempts: Attempt[];
 };
 
@@ -511,7 +513,9 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   if (stage === "signin") return <main className="loading-screen auth-screen"><div className="auth-card"><BrandLogo/><span className="eyebrow">{authMode === "reset" ? "ACCOUNT RECOVERY" : "STUDENT ACCOUNT"}</span><h1>{authMode === "login" ? "Log in" : authMode === "register" ? "Create account" : "Reset password"}</h1><p>{authMode === "reset" ? "Enter the recovery code that was issued by this site, then choose a new password." : "Use a site username and password to save your subjects, test results and Premium access."}</p>{authMode !== "reset" && <div className="auth-tabs"><button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); setAuthNotice(""); }}>Log in</button><button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); setAuthNotice(""); }}>Sign up</button></div>}<form className="account-form" onSubmit={submitAuth}><label><span>Username</span><input autoComplete="username" value={authUsername} onChange={(event) => setAuthUsername(event.target.value)} placeholder="Lowercase letters, numbers or underscores" minLength={3} maxLength={24} required/></label>{authMode === "reset" && <label><span>Recovery code</span><input autoComplete="off" value={authRecoveryCode} onChange={(event) => setAuthRecoveryCode(event.target.value.toUpperCase())} placeholder="XXXXX-XXXXX-XXXXX-XXXXX" required/></label>}<label><span>{authMode === "reset" ? "New password" : "Password"}</span><input type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} placeholder="At least 8 characters" minLength={8} maxLength={128} required/></label>{authMode === "register" && authUsername.trim().toLowerCase() === "justinnamwoo1003" && <label><span>One-time administrator setup code</span><input type="password" autoComplete="off" value={adminSetupCode} onChange={(event) => setAdminSetupCode(event.target.value)} placeholder="Required only for initial admin registration" required/></label>}{authNotice && <div className="auth-notice" role="status">{authNotice}</div>}{authError && <div className="auth-error" role="alert">{authError}</div>}<button className="primary-button" disabled={authBusy}>{authBusy ? "Working…" : authMode === "login" ? "Log in" : authMode === "register" ? "Create account" : "Reset password"} <span>→</span></button></form>{authMode === "login" && <button type="button" className="forgot-link" onClick={() => { setAuthMode("reset"); setAuthError(""); setAuthNotice(""); setAuthPassword(""); }}>Forgot password?</button>}{authMode === "reset" && <button type="button" className="forgot-link" onClick={() => { setAuthMode("login"); setAuthError(""); setAuthRecoveryCode(""); setAuthPassword(""); }}>← Back to login</button>}{authMode === "register" && <small>You will receive a one-time recovery code after registration. Save it somewhere private.</small>}</div></main>;
   if (stage === "recovery-code") return <main className="loading-screen auth-screen"><div className="auth-card recovery-card"><BrandLogo/><span className="eyebrow">SAVE THIS ONCE</span><h1>Your recovery code</h1><p>This code is the only self-service way to reset your password. Store it somewhere private; it will not be shown again.</p><code>{issuedRecoveryCode}</code><button className="primary-button" onClick={() => void loadMe()}>I saved the code <span>→</span></button></div></main>;
   if (me?.user.sanction) return <main className="loading-screen auth-screen"><div className="auth-card sanction-card"><BrandLogo/><span className="eyebrow">ACCOUNT RESTRICTED</span><h1>{me.user.sanction.kind === "banned" ? "Account permanently suspended" : "Account temporarily suspended"}</h1><p>{me.user.sanction.reason}</p>{me.user.sanction.until && <strong>Access returns {new Date(me.user.sanction.until).toLocaleString("en-GB")}</strong>}<button className="secondary-button" onClick={() => void logOut()}>Log out</button></div></main>;
-  if (stage === "onboarding") return <SubjectOnboarding name={me?.user.displayName ?? initialName} current={me?.selectedSubjects ?? []} currentLevels={me?.subjectLevels ?? {}} onSaved={async () => { await loadMe(); }} />;
+  if (stage === "onboarding") return !me?.grade
+    ? <OnboardingWizard name={me?.user.displayName ?? initialName} onSaved={async () => { await loadMe(); }}/>
+    : <SubjectOnboarding name={me?.user.displayName ?? initialName} current={me?.selectedSubjects ?? []} currentLevels={me?.subjectLevels ?? {}} onSaved={async () => { await loadMe(); }} />;
   if (stage === "community" && me?.premium) return <CommunityClient username={me.user.email} isAdmin={me.user.isAdmin} onBack={goHome}/>;
 
   return <main className="app-shell">
@@ -617,6 +621,144 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
       <div className="result-actions"><button className="secondary-button" onClick={goHome}>Back to dashboard</button>{me?.premium ? <button className="primary-button" onClick={() => setStage("setup")}>Retake with different questions <span>→</span></button> : <span className="free-result-lock">Free attempt used · further tests are locked</span>}</div>
     </div>}
     <footer><span>IB Curivo</span><p>Independent practice tool. Not affiliated with or endorsed by the International Baccalaureate Organization.</p></footer>
+  </main>;
+}
+
+type WizardLang = "en" | "ko" | "ja" | "fr" | "it" | "zh";
+const wizardLanguages: Array<{ code: WizardLang; label: string }> = [
+  { code: "en", label: "English" },
+  { code: "ko", label: "한국어" },
+  { code: "ja", label: "日本語" },
+  { code: "fr", label: "Français" },
+  { code: "it", label: "Italiano" },
+  { code: "zh", label: "中文" },
+];
+
+const wizardCopy: Record<WizardLang, Record<string, string>> = {
+  en: { welcome: "Welcome to IB Curivo! Which language should I speak?", confirmLanguage: "Great, I'll speak in English from now on!", askGrade: "Nice to meet you! What grade are you in?", askTrack: "You're in Grade 10 — let's find your subjects together. Are you leaning more toward Sciences or Humanities?", askCandidates: "Good choice! Pick a few subjects you're considering — you can pick several.", quizIntro: "Let's try one quick sample question from each subject you picked", quizDone: "Nice work! Based on your answers, here's what I'd recommend.", goToPicker: "Now let's lock in your final six subjects" },
+  ko: { welcome: "IB Curivo에 오신 걸 환영해요! 어떤 언어로 이야기할까요?", confirmLanguage: "좋아요, 이제부터 한국어로 이야기할게요!", askGrade: "만나서 반가워요! 지금 몇 학년이에요?", askTrack: "10학년이군요 — 어떤 과목이 맞을지 같이 찾아봐요. Sciences 쪽에 더 끌려요, Humanities 쪽에 더 끌려요?", askCandidates: "좋아요! 지금 생각하고 있는 과목들을 몇 개 골라볼래요 — 여러 개 선택 가능해요.", quizIntro: "고른 과목마다 짧은 샘플 문제를 하나씩 풀어볼게요", quizDone: "잘했어요! 답변을 보고 이런 과목들을 추천해볼게요.", goToPicker: "이제 최종 6과목을 확정해볼까요" },
+  ja: { welcome: "IB Curivoへようこそ！どの言語で話しましょうか？", confirmLanguage: "了解です、これからは日本語で話しますね！", askGrade: "はじめまして！今、何年生ですか？", askTrack: "10年生ですね — 合う科目を一緒に探しましょう。Sciences寄りですか、Humanities寄りですか？", askCandidates: "いいですね！今考えている科目をいくつか選んでみてください — 複数選択できます。", quizIntro: "選んだ科目ごとに、簡単なサンプル問題を一つずつ試してみましょう", quizDone: "よくできました！答えをもとに、こんな科目がおすすめです。", goToPicker: "では最終的な6科目を決めましょう" },
+  fr: { welcome: "Bienvenue sur IB Curivo ! Dans quelle langue veux-tu que je parle ?", confirmLanguage: "Parfait, je vais parler en français maintenant !", askGrade: "Ravi de te rencontrer ! Tu es en quelle année ?", askTrack: "Tu es en Grade 10 — trouvons tes matières ensemble. Tu es plutôt attiré par les Sciences ou les Humanities ?", askCandidates: "Bon choix ! Choisis quelques matières que tu envisages — tu peux en choisir plusieurs.", quizIntro: "Essayons une petite question type pour chaque matière choisie", quizDone: "Bien joué ! D'après tes réponses, voici ce que je recommande.", goToPicker: "Passons maintenant au choix final de tes six matières" },
+  it: { welcome: "Benvenuto/a su IB Curivo! In quale lingua devo parlare?", confirmLanguage: "Perfetto, ora parlerò in italiano!", askGrade: "Piacere di conoscerti! In che anno sei?", askTrack: "Sei al Grade 10 — troviamo insieme le tue materie. Sei più orientato/a verso le Sciences o le Humanities?", askCandidates: "Ottima scelta! Scegli alcune materie che stai considerando — puoi sceglierne più di una.", quizIntro: "Proviamo una breve domanda di esempio per ogni materia scelta", quizDone: "Ottimo lavoro! In base alle tue risposte, ecco cosa ti consiglio.", goToPicker: "Ora scegliamo le tue sei materie definitive" },
+  zh: { welcome: "欢迎来到 IB Curivo！你想用哪种语言交流？", confirmLanguage: "好的，接下来我会用中文和你交流！", askGrade: "很高兴认识你！你现在读几年级？", askTrack: "你是10年级 — 我们一起来找找适合你的科目吧。你更偏向 Sciences 还是 Humanities？", askCandidates: "不错的选择！挑几个你正在考虑的科目吧 — 可以多选。", quizIntro: "我们来试试每个科目的一道简单示例题", quizDone: "做得好！根据你的答案，我推荐这些科目。", goToPicker: "现在来确定你最终的六门科目吧" },
+};
+
+const scienceTrackIds = ["math", "math-ai", "physics", "chemistry", "biology", "cs", "ess", "sehs", "design-technology"];
+const humanitiesTrackIds = ["economics", "business", "psychology", "history", "global-politics", "geography", "anthropology", "digital-society", "philosophy", "english-a", "english-b"];
+
+function Mascot({ mood = "happy" }: { mood?: "happy" | "excited" }) {
+  return <svg viewBox="0 0 120 120" className={`mascot mascot-${mood}`} role="img" aria-label="Curivo guide character">
+    <path className="mascot-antenna" d="M60 24V12"/>
+    <circle className="mascot-antenna-tip" cx="60" cy="10" r="4"/>
+    <circle className="mascot-body" cx="60" cy="66" r="42"/>
+    <circle className="mascot-cheek" cx="34" cy="76" r="7"/>
+    <circle className="mascot-cheek" cx="86" cy="76" r="7"/>
+    <g className="mascot-eyes"><circle cx="45" cy="60" r="5"/><circle cx="75" cy="60" r="5"/></g>
+    <path className="mascot-mouth" d="M46 80q14 12 28 0"/>
+  </svg>;
+}
+
+function SpeechBubble({ text }: { text: string }) {
+  const [shown, setShown] = useState("");
+  useEffect(() => {
+    setShown("");
+    let index = 0;
+    const id = window.setInterval(() => {
+      index += 1;
+      setShown(text.slice(0, index));
+      if (index >= text.length) window.clearInterval(id);
+    }, 16);
+    return () => window.clearInterval(id);
+  }, [text]);
+  return <div className="speech-bubble"><p>{shown}</p></div>;
+}
+
+function QuizStep({ question, subjectId, index, total, onAnswer }: { question: Question | null; subjectId: string; index: number; total: number; onAnswer: (value: string) => void }) {
+  const [text, setText] = useState("");
+  const subjectName = subjectCatalog.find((item) => item.id === subjectId)?.name ?? subjectId;
+  if (!question) return <div className="wizard-quiz"><span className="eyebrow">{index + 1} / {total} · {subjectName}</span><p>No sample question is available for this subject yet.</p><button type="button" className="primary-button wizard-continue" onClick={() => onAnswer("")}>Skip <span>→</span></button></div>;
+  return <div className="wizard-quiz"><span className="eyebrow">{index + 1} / {total} · {subjectName}</span><h2>{question.prompt}</h2>
+    {question.responseType === "mcq"
+      ? <div className="choice-list">{question.choices?.map((choice, choiceIndex) => <button type="button" key={choice} onClick={() => onAnswer(String(choiceIndex))}><span>{String.fromCharCode(65 + choiceIndex)}</span><p>{choice}</p></button>)}</div>
+      : <div className="wizard-quiz-response"><textarea value={text} onChange={(event) => setText(event.target.value)} rows={4} placeholder="Write a quick answer…"/><button type="button" className="primary-button wizard-continue" onClick={() => onAnswer(text)}>Next <span>→</span></button></div>}
+  </div>;
+}
+
+function OnboardingWizard({ name, onSaved }: { name: string; onSaved: () => Promise<void> }) {
+  const [lang, setLang] = useState<WizardLang>("en");
+  const [step, setStep] = useState<"welcome" | "grade" | "track" | "candidates" | "quiz" | "recommend" | "picker">("welcome");
+  const [grade, setGrade] = useState<"10" | "11" | "12" | null>(null);
+  const [track, setTrack] = useState<"science" | "humanities" | null>(null);
+  const [candidates, setCandidates] = useState<string[]>([]);
+  const [quizIndex, setQuizIndex] = useState(0);
+  const [quizQuestions, setQuizQuestions] = useState<Array<{ subjectId: string; question: Question | null }>>([]);
+  const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
+  const [savingGrade, setSavingGrade] = useState(false);
+  const t = wizardCopy[lang];
+
+  const chooseGrade = async (value: "10" | "11" | "12") => {
+    setGrade(value); setSavingGrade(true);
+    await apiFetch("/api/profile/grade", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ grade: value, uiLanguage: lang }) }).catch(() => undefined);
+    setSavingGrade(false);
+    setStep(value === "10" ? "track" : "picker");
+  };
+
+  const toggleCandidate = (id: string) => setCandidates((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+
+  const startQuiz = () => {
+    const questions = candidates.map((subjectId) => {
+      const subject = subjects.find((item) => item.id === subjectId);
+      if (!subject) return { subjectId, question: null };
+      try {
+        const level: Level = subject.levels.includes("SL") ? "SL" : "HL";
+        const papers = getPapers(subject, level);
+        const paper = papers.find((item) => item.id === "concept") ?? papers[0];
+        const topics = getRelevantTopics(subject, level, paper);
+        const pool = buildUniqueQuestionPool(subject, level, paper, topics, false, "python", subjectId.length * 7 + 3, []);
+        const question = pool.find((item) => item.responseType === "mcq" && (item.difficultyLevel ?? 3) <= 2) ?? pool.find((item) => item.responseType === "mcq") ?? pool[0] ?? null;
+        return { subjectId, question };
+      } catch { return { subjectId, question: null }; }
+    });
+    setQuizQuestions(questions); setQuizIndex(0); setStep("quiz");
+  };
+
+  const answerQuiz = (value: string) => {
+    const current = quizQuestions[quizIndex];
+    if (current) setQuizAnswers((map) => ({ ...map, [current.subjectId]: value }));
+    if (quizIndex + 1 < quizQuestions.length) setQuizIndex((index) => index + 1); else setStep("recommend");
+  };
+
+  const recommended = useMemo(() => quizQuestions.map(({ subjectId, question }) => {
+    const answer = quizAnswers[subjectId];
+    if (!question) return { subjectId, score: answer ? 1 : 0 };
+    if (question.responseType === "mcq") return { subjectId, score: answer !== undefined && Number(answer) === question.correctIndex ? 2 : 0 };
+    return { subjectId, score: answer && answer.trim().length > 5 ? 1 : 0 };
+  }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).map((item) => item.subjectId), [quizQuestions, quizAnswers]);
+
+  if (step === "picker") return <SubjectOnboarding name={name} current={grade === "10" ? recommended.slice(0, 6) : []} currentLevels={{}} onSaved={onSaved}/>;
+
+  const currentQuiz = quizQuestions[quizIndex];
+  const candidateList = track === "science" ? scienceTrackIds : humanitiesTrackIds;
+
+  return <main className="wizard-page"><div className="mascot-wrap"><Mascot mood={step === "recommend" ? "excited" : "happy"}/></div>
+    {step === "welcome" && <>
+      <SpeechBubble text={t.welcome}/>
+      <div className="wizard-choices">{wizardLanguages.map((option) => <button type="button" key={option.code} className={lang === option.code ? "selected" : ""} onClick={() => setLang(option.code)}>{option.label}</button>)}</div>
+      <button type="button" className="primary-button wizard-continue" onClick={() => setStep("grade")}>{t.confirmLanguage} <span>→</span></button>
+    </>}
+    {step === "grade" && <><SpeechBubble text={t.askGrade}/><div className="wizard-choices">{(["10", "11", "12"] as const).map((value) => <button type="button" key={value} disabled={savingGrade} onClick={() => void chooseGrade(value)}>Grade {value}</button>)}</div></>}
+    {step === "track" && <><SpeechBubble text={t.askTrack}/><div className="wizard-choices"><button type="button" onClick={() => { setTrack("science"); setStep("candidates"); }}>Sciences</button><button type="button" onClick={() => { setTrack("humanities"); setStep("candidates"); }}>Humanities</button></div></>}
+    {step === "candidates" && <>
+      <SpeechBubble text={t.askCandidates}/>
+      <div className="wizard-candidate-grid">{candidateList.map((id) => { const subject = subjectCatalog.find((item) => item.id === id); if (!subject) return null; return <button type="button" key={id} className={candidates.includes(id) ? "selected" : ""} onClick={() => toggleCandidate(id)}>{subject.name}</button>; })}</div>
+      <button type="button" className="primary-button wizard-continue" disabled={!candidates.length} onClick={startQuiz}>{t.quizIntro} <span>→</span></button>
+    </>}
+    {step === "quiz" && (currentQuiz ? <QuizStep question={currentQuiz.question} subjectId={currentQuiz.subjectId} index={quizIndex} total={quizQuestions.length} onAnswer={answerQuiz}/> : <p>Loading…</p>)}
+    {step === "recommend" && <>
+      <SpeechBubble text={t.quizDone}/>
+      <ul className="wizard-recommend-list">{(recommended.length ? recommended : candidates).map((id) => <li key={id}>{subjectCatalog.find((item) => item.id === id)?.name ?? id}</li>)}</ul>
+      <button type="button" className="primary-button wizard-continue" onClick={() => setStep("picker")}>{t.goToPicker} <span>→</span></button>
+    </>}
   </main>;
 }
 
