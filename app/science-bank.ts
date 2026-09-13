@@ -427,9 +427,24 @@ function biology(subject: Subject, paper: Paper, node: ScienceNode, v: number, d
     : d === 3
       ? `A change disrupts ${node.concepts[0]}. Predict its effect at two biological scales and explain the mechanism.`
       : `Using the evidence and your biological knowledge, discuss how changes in ${node.concepts[0]} and ${node.concepts[1]} could affect the system from the cellular to organism or ecosystem level.`;
-  return base(subject, paper, node, v, d, prompt, context, d >= 4 ? "Discuss" : "Explain", marks,
+  const question = base(subject, paper, node, v, d, prompt, context, d >= 4 ? "Discuss" : "Explain", marks,
     [`Name the relevant biological structures, molecules or populations.`, `Give a directional mechanism rather than a statement of benefit.`, `Link at least two scales accurately.`, `Use the data as evidence and qualify any causal claim or limitation.`],
     ["scale changes without explanation", "structure named but function not linked", "correlation treated as causation", "human purpose attributed to evolution"]);
+  if (node.code.startsWith("B")) return { ...question, visual: "layered-diagram", visualData: {
+    title: "Figure 1: leaf cross-section",
+    layers: [
+      { label: "Cuticle and upper epidermis" },
+      { label: "Palisade mesophyll (main photosynthetic layer)" },
+      { label: "Spongy mesophyll and air spaces" },
+      { label: "Lower epidermis and guard cells" },
+    ],
+  } };
+  if (node.code.startsWith("C")) return { ...question, visual: "process-flow", visualData: {
+    title: "Figure 1: carbon cycling through this system",
+    layout: "circular",
+    nodes: ["Atmospheric CO2", "Photosynthesis (producers)", "Consumption", "Cellular respiration", "Decomposition"],
+  } };
+  return question;
 }
 
 function chemistry(subject: Subject, paper: Paper, node: ScienceNode, v: number, d: number): Question {
@@ -532,9 +547,18 @@ function physics(subject: Subject, paper: Paper, node: ScienceNode, v: number, d
     : d === 3
       ? `Explain how ${node.concepts[0]} and ${node.concepts[1]} determine the observed behaviour. Include a labelled representation and a quantitative relationship.`
       : `Develop and evaluate a model for ${node.title} using the data. State assumptions, calculate a prediction and explain one physical reason for any disagreement.`;
-  return graph(base(subject, paper, node, v, d, prompt, context, d >= 4 ? "Evaluate" : "Determine", marks,
+  const finalQuestion = base(subject, paper, node, v, d, prompt, context, d >= 4 ? "Evaluate" : "Determine", marks,
     [`Define the system and use a relevant diagram, field, ray or force representation where needed.`, `Write equations symbolically and use consistent sign/vector conventions.`, `Substitute with units, appropriate precision and a sanity check.`, `Interpret the result physically and evaluate a stated modelling assumption.`],
-    ["formula selected without model", "vector direction ignored", "area/gradient has no defined meaning", "limitation not linked to result"]));
+    ["formula selected without model", "vector direction ignored", "area/gradient has no defined meaning", "limitation not linked to result"]);
+  if (node.code === "B5") return { ...finalQuestion, visual: "circuit", visualData: {
+    cellLabel: "cell (emf ε, internal resistance r)",
+    components: [
+      { kind: "ammeter", label: "A", branch: 0 },
+      { kind: "resistor", label: "R (variable)", branch: 0 },
+      { kind: "voltmeter", label: "V", branch: 1 },
+    ],
+  } };
+  return graph(finalQuestion);
 }
 
 function computerScience(subject: Subject, paper: Paper, node: ScienceNode, v: number, d: number, language: "python" | "java"): Question {
@@ -550,8 +574,40 @@ function computerScience(subject: Subject, paper: Paper, node: ScienceNode, v: n
     const question = base(subject, paper, node, v, d, prompt, context, d >= 4 ? "Recommend" : d === 3 ? "Analyse" : "Describe", marks,
       [`Use exact technical vocabulary and scenario constraints.`, `Trace input/data → processing/control → output or system consequence.`, `For security use threat → vulnerability → control → residual risk.`, `Distinguish what the technology does from why it fits this scenario.`],
       ["technology described without application", "bandwidth treated as latency", "security control claimed to remove all risk", "constraint ignored"]);
-    if (node.code.startsWith("A2")) return { ...question, visual: "network" };
-    if (node.code.startsWith("A3")) return { ...question, visual: "erd" };
+    if (node.code.startsWith("A2")) return { ...question, visual: "network", visualData: {
+      netNodes: [
+        { id: "router", label: "Router", x: 50, y: 12 },
+        { id: "switch", label: "Switch", x: 50, y: 46 },
+        { id: "server", label: "Server", x: 50, y: 82 },
+        { id: "buildingA", label: "Building A", x: 12, y: 82 },
+        { id: "buildingB", label: "Building B", x: 88, y: 82 },
+      ],
+      netEdges: [
+        { from: "router", to: "switch" },
+        { from: "switch", to: "server" },
+        { from: "switch", to: "buildingA" },
+        { from: "switch", to: "buildingB" },
+      ],
+    } };
+    if (node.code.startsWith("A3")) return { ...question, visual: "erd", visualData: {
+      entities: [
+        { name: "Student", fields: ["PK student_id", "name", "building_id"] },
+        { name: "Sensor Reading", fields: ["PK reading_id", "FK sensor_id", "value", "timestamp"] },
+        { name: "Building", fields: ["PK building_id", "name"] },
+      ],
+      relationships: [
+        { from: "Student", to: "Building", label: "M:1" },
+        { from: "Sensor Reading", to: "Building", label: "M:1" },
+      ],
+    } };
+    if (node.code.startsWith("A1.1")) return { ...question, visual: "logic", visualData: {
+      gates: [
+        { id: "g1", kind: "AND", inputs: ["A", "B"] },
+        { id: "g2", kind: "NOT", inputs: ["g1"] },
+      ],
+      gateInputs: ["A", "B"],
+      outputLabel: "Q",
+    } };
     return question;
   }
   const upper = 60 + v * 5;

@@ -14,6 +14,8 @@ type Answers = Record<string, string>;
 type TopicScore = { code: string; title: string; percent: number; possible: number; earned: number };
 type CriterionScore = { code: string; name: string; description: string; percent: number; possible: number; earned: number };
 type Mistake = { id: string; topicCode: string; topicTitle: string; prompt: string; modelAnswer: string; answer: string; skill: string };
+type AiMarkResult = { marksAwarded: number; maxMarks: number; feedback: string; metRequirements: string[]; missedRequirements: string[]; criteria?: Array<{ code: string; marksAwarded: number; maxMarks: number; feedback: string }> };
+type AiMarkState = { status: "loading" } | { status: "error"; message: string } | { status: "done"; result: AiMarkResult };
 type Attempt = {
   id: number; subjectId: string; subjectName: string; level: string; paperId: string; paperName: string;
   mode: TestMode; percent: number; grade: number; durationSeconds: number; topicBreakdown: TopicScore[]; criteriaBreakdown: CriterionScore[];
@@ -69,13 +71,22 @@ function selectPreparedQuestions(pool: Question[], count: number, topicCodes: st
 
 type ThemeName = "blue" | "teal" | "violet" | "rose" | "orange" | "slate";
 const themes: Record<ThemeName, { name: string; blue: string; navy: string; soft: string; line: string; rgb: string }> = {
-  blue: { name: "Blue", blue: "#155eef", navy: "#0b2d6b", soft: "#eaf2ff", line: "#d9e5f5", rgb: "21,94,239" },
+  blue: { name: "Pine", blue: "#33604a", navy: "#22352b", soft: "#e6efe8", line: "#e6ddcc", rgb: "51,96,74" },
   teal: { name: "Teal", blue: "#087f75", navy: "#074f4a", soft: "#e5f7f4", line: "#cfe8e4", rgb: "8,127,117" },
   violet: { name: "Violet", blue: "#7357d9", navy: "#3d2d7a", soft: "#f0ecff", line: "#dfd8f5", rgb: "115,87,217" },
   rose: { name: "Rose", blue: "#c7446b", navy: "#762640", soft: "#fdeaf0", line: "#f0d5de", rgb: "199,68,107" },
   orange: { name: "Orange", blue: "#c76319", navy: "#74380d", soft: "#fff0e4", line: "#f1ddce", rgb: "199,99,25" },
   slate: { name: "Slate", blue: "#42617d", navy: "#21394f", soft: "#eaf0f5", line: "#d7e0e7", rgb: "66,97,125" },
 };
+
+const aiFeedbackLanguages: Array<{ code: string; label: string }> = [
+  { code: "en", label: "English" },
+  { code: "ko", label: "한국어" },
+  { code: "ja", label: "日本語" },
+  { code: "fr", label: "Français" },
+  { code: "it", label: "Italiano" },
+  { code: "zh", label: "中文" },
+];
 
 function applyTheme(name: ThemeName) {
   const theme = themes[name]; const root = document.documentElement;
@@ -183,6 +194,9 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
   const [premiumNote, setPremiumNote] = useState("");
   const [premiumBusy, setPremiumBusy] = useState(false);
   const [premiumMessage, setPremiumMessage] = useState("");
+  const [aiMarks, setAiMarks] = useState<Record<string, AiMarkState>>({});
+  const [aiFeedbackLanguage, setAiFeedbackLanguage] = useState<string>(() => (typeof window !== "undefined" && localStorage.getItem("ibsd-ai-language")) || "en");
+  const changeAiFeedbackLanguage = (next: string) => { setAiFeedbackLanguage(next); localStorage.setItem("ibsd-ai-language", next); };
   const finishGuard = useRef(false);
 
   useEffect(() => {
@@ -456,6 +470,23 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
     else { const data = await response.json() as { error?: string }; setSaveError(data.error ?? "The result could not be saved."); finishGuard.current = false; }
   };
 
+  const requestAiMark = async (question: Question) => {
+    const answer = answers[question.id] ?? "";
+    setAiMarks((current) => ({ ...current, [question.id]: { status: "loading" } }));
+    try {
+      const response = await apiFetch("/api/mark", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({
+        prompt: question.prompt, context: question.context, commandTerm: question.commandTerm, responseType: question.responseType,
+        marks: question.marks, modelAnswer: question.modelAnswer, markschemePoints: question.markschemePoints, commonErrors: question.commonErrors,
+        criterionCodes: question.criterionCodes, answer: formatAnswerForReview(question, answer), language: aiFeedbackLanguage,
+      }) });
+      const data = await response.json() as { result?: AiMarkResult; error?: string };
+      if (!response.ok || !data.result) { setAiMarks((current) => ({ ...current, [question.id]: { status: "error", message: data.error ?? "AI marking failed." } })); return; }
+      setAiMarks((current) => ({ ...current, [question.id]: { status: "done", result: data.result! } }));
+    } catch {
+      setAiMarks((current) => ({ ...current, [question.id]: { status: "error", message: "AI marking failed." } }));
+    }
+  };
+
   useEffect(() => {
     if ((stage !== "test" && stage !== "paper") || timeLimit <= 0) return;
     const timer = window.setInterval(() => setTimeLeft((value) => {
@@ -582,10 +613,10 @@ export default function DiagnosticClient({ initialName }: { initialName: string 
       {saveError && <div className="inline-error">{saveError}</div>}
       {criteriaBreakdown.length > 0 && <section className="result-section"><div className="section-heading compact"><div><span className="step-label">CR</span><h2>Assessment criteria match</h2></div><p>How closely this response currently meets each language criterion</p></div><div className="criteria-grid">{criteriaBreakdown.map((criterion) => <div className="criterion-card" key={criterion.code}><span>{criterion.code}</span><div><strong>{criterion.name}</strong><p>{criterion.description}</p></div><em className={criterion.percent >= 75 ? "secure" : criterion.percent >= 50 ? "developing" : "needs-work"}>{criterion.percent}% · {criterion.percent >= 75 ? "Meets well" : criterion.percent >= 50 ? "Partly meets" : "Not yet met"}</em></div>)}</div></section>}
       {me?.premium ? <><section className="result-section"><div className="section-heading compact"><div><span className="step-label">01</span><h2>Topic diagnosis</h2></div><p>Weakest topic first</p></div><div className="topic-results">{topicBreakdown.map((topic) => <div key={topic.code} className="topic-result-row"><span className="result-code">{topic.code}</span><div><strong>{topic.title}</strong><span><i style={{ width: `${topic.percent}%` }}/></span></div><em className={topic.percent < 50 ? "needs-work" : topic.percent < 72 ? "developing" : "secure"}>{topic.percent}%</em></div>)}</div></section><section className="diagnostic-grid"><div className="insight-card warning"><span className="card-kicker">REVISION QUEUE #1</span><h3>{topicBreakdown[0]?.code} {topicBreakdown[0]?.title}</h3><p>Rebuild the central relationship, correct your lowest-scoring response, then complete one transfer question.</p></div><div className="insight-card"><span className="card-kicker">MISTAKE BANK</span><h3>{mistakes.length} responses saved</h3><p>Your missed and partially developed responses are now available from the dashboard for targeted retry.</p></div></section></> : <section className="quick-result"><div><span className="card-kicker">NEXT STEP</span><h2>Review {topicBreakdown[0]?.code} {topicBreakdown[0]?.title}</h2><p>Correct the lowest-scoring topic, then retry a paper-specific question.</p></div><div className="premium-lock"><span>Premium report</span><strong>Detailed progress is locked</strong><p>An administrator can grant Premium to your account. The badge and features appear automatically after approval.</p></div></section>}
-      <section className="answer-review"><div className="section-heading compact"><div><span className="step-label">02</span><h2>Answer review</h2></div><p>Original practice markschemes</p></div>{questions.map((question, index) => <details key={question.id}><summary><span>{index + 1}</span><div><strong>{question.topicCode} · {question.commandTerm ?? question.skill}</strong><p>{question.prompt}</p></div><em>{scoreQuestion(question, answers[question.id] ?? "")}/{question.marks}</em></summary><div className="review-body"><div><span>Your response</span><p>{formatAnswerForReview(question, answers[question.id] ?? "")}</p></div><div className="model-points"><span>Markscheme requirements</span>{question.markschemePoints?.length ? <ol>{question.markschemePoints.map((point) => <li key={point}>{point}</li>)}</ol> : <p>{question.modelAnswer}</p>}<small>Key coverage: {question.keywords.join(" · ")}</small>{question.commonErrors?.length ? <p className="common-errors"><strong>Common errors:</strong> {question.commonErrors.join(" · ")}</p> : null}</div></div></details>)}</section>
+      <section className="answer-review"><div className="section-heading compact"><div><span className="step-label">02</span><h2>Answer review</h2></div><p>Original practice markschemes</p><label className="ai-language-picker"><span>IB examiner AI feedback language</span><select value={aiFeedbackLanguage} onChange={(event) => changeAiFeedbackLanguage(event.target.value)}>{aiFeedbackLanguages.map((option) => <option key={option.code} value={option.code}>{option.label}</option>)}</select></label></div>{questions.map((question, index) => <details key={question.id}><summary><span>{index + 1}</span><div><strong>{question.topicCode} · {question.commandTerm ?? question.skill}</strong><p>{question.prompt}</p></div><em>{scoreQuestion(question, answers[question.id] ?? "")}/{question.marks}</em></summary><div className="review-body"><div><span>Your response</span><p>{formatAnswerForReview(question, answers[question.id] ?? "")}</p></div><div className="model-points"><span>Markscheme requirements</span>{question.markschemePoints?.length ? <ol>{question.markschemePoints.map((point) => <li key={point}>{point}</li>)}</ol> : <p>{question.modelAnswer}</p>}<small>Key coverage: {question.keywords.join(" · ")}</small>{question.commonErrors?.length ? <p className="common-errors"><strong>Common errors:</strong> {question.commonErrors.join(" · ")}</p> : null}</div>{question.responseType !== "mcq" && <AiMarkPanel state={aiMarks[question.id]} onRequest={() => void requestAiMark(question)}/>}</div></details>)}</section>
       <div className="result-actions"><button className="secondary-button" onClick={goHome}>Back to dashboard</button>{me?.premium ? <button className="primary-button" onClick={() => setStage("setup")}>Retake with different questions <span>→</span></button> : <span className="free-result-lock">Free attempt used · further tests are locked</span>}</div>
     </div>}
-    <footer><span>IB Subject Diagnostic</span><p>Independent practice tool. Not affiliated with or endorsed by the International Baccalaureate Organization.</p></footer>
+    <footer><span>IB Curivo</span><p>Independent practice tool. Not affiliated with or endorsed by the International Baccalaureate Organization.</p></footer>
   </main>;
 }
 
@@ -666,6 +697,20 @@ function GrowthSummary({ current, previous, currentBreakdown, duration }: { curr
 }
 
 function LockedFeature({ title, text }: { title: string; text: string }) { return <div className="locked-feature"><span>PREMIUM ACCESS REQUIRED</span><h2>{title}</h2><p>{text}</p></div>; }
+function AiMarkPanel({ state, onRequest }: { state: AiMarkState | undefined; onRequest: () => void }) {
+  if (!state) return <div className="ai-mark"><button type="button" className="secondary-button" onClick={onRequest}>Get mark with IB examiner AI</button></div>;
+  if (state.status === "loading") return <div className="ai-mark"><p className="ai-mark-loading">Marking with IB examiner AI…</p></div>;
+  if (state.status === "error") return <div className="ai-mark"><p className="inline-error">{state.message}</p><button type="button" className="secondary-button" onClick={onRequest}>Retry</button></div>;
+  const { result } = state;
+  return <div className="ai-mark ai-mark-result">
+    <div className="ai-mark-heading"><span>AI MARK</span><strong>{result.marksAwarded}/{result.maxMarks}</strong></div>
+    <p>{result.feedback}</p>
+    {result.metRequirements.length > 0 && <p className="ai-mark-met"><strong>Met:</strong> {result.metRequirements.join(" · ")}</p>}
+    {result.missedRequirements.length > 0 && <p className="ai-mark-missed"><strong>Missed:</strong> {result.missedRequirements.join(" · ")}</p>}
+    {result.criteria?.length ? <ul className="ai-mark-criteria">{result.criteria.map((criterion) => <li key={criterion.code}><strong>{criterion.code}</strong> {criterion.marksAwarded}/{criterion.maxMarks} — {criterion.feedback}</li>)}</ul> : null}
+    <button type="button" className="quiet-button" onClick={onRequest}>Re-mark</button>
+  </div>;
+}
 function SetupBlock({ number, title, subtitle, side, children }: { number: string; title: string; subtitle: string; side?: string; children: React.ReactNode }) { return <section className="setup-block"><div className="setup-number">{number}</div><div className="setup-content"><div className="block-title"><div><h2>{title}</h2><p>{subtitle}</p></div>{side && <span className="range-count">{side}</span>}</div>{children}</div></section>; }
 function QuestionCard({ question, answer, onAnswer, allowMathSymbols = false }: { question: Question; answer: string; onAnswer: (value: string) => void; allowMathSymbols?: boolean }) {
   return <article className="question-card">
@@ -693,7 +738,7 @@ function TextAnswer({ question, value, onChange, allowMathSymbols }: { question:
 
 function PrintablePaper({ id, subjectName, level, paperName, minutes, questions }: { id: string; subjectName: string; level: Level; paperName: string; minutes: number; questions: Question[] }) {
   const totalMarks = questions.reduce((sum, question) => sum + question.marks, 0);
-  return <div id={id} className="printable-paper" aria-hidden="true"><section data-pdf-page className="pdf-page pdf-cover"><BrandLogo/><span>IB-STYLE ORIGINAL PRACTICE</span><h1>{subjectName} {level}</h1><h2>{paperName}</h2><dl><div><dt>Time allowed</dt><dd>{minutes} minutes</dd></div><div><dt>Total marks</dt><dd>{totalMarks}</dd></div><div><dt>Questions</dt><dd>{questions.length}</dd></div></dl><div className="pdf-instructions"><strong>Instructions to candidates</strong><ul><li>Do not open the online answer-check section until you have finished the timed paper.</li><li>Write all working clearly. Unsupported answers may not receive full marks.</li><li>Use the data, figures and command terms provided in each question.</li><li>This is an original formative practice paper and is not an official IB examination.</li></ul></div><footer>IB Subject Diagnostic · Question paper only · No markscheme included</footer></section>{questions.map((question, index) => <section data-pdf-page className="pdf-page pdf-question" key={question.id}><header><strong>{subjectName} {level}</strong><span>{paperName}</span></header><div className="pdf-question-meta"><span>Question {index + 1}</span><span>{question.topicCode} · {question.commandTerm ?? question.skill}</span><b>[{question.marks}]</b></div>{question.context && <div className="pdf-source"><strong>Source</strong><p>{question.context}</p></div>}{question.visual && <QuestionVisual type={question.visual} data={question.visualData}/>} {question.starterCode && <pre>{question.starterCode}</pre>}<h2>{question.prompt}</h2>{question.responseType === "mcq" ? <ol className="pdf-choices" type="A">{question.choices?.map((choice) => <li key={choice}>{choice}</li>)}</ol> : <div className="pdf-answer-space">{Array.from({ length: question.responseType === "extended" ? 17 : question.responseType === "code" ? 18 : question.responseType === "diagram" ? 14 : 10 }, (_, line) => <i key={line}/>)}</div>}<footer><span>{index + 1} / {questions.length}</span><span>Write answers in the space provided or on additional paper.</span></footer></section>)}</div>;
+  return <div id={id} className="printable-paper" aria-hidden="true"><section data-pdf-page className="pdf-page pdf-cover"><BrandLogo/><span>IB-STYLE ORIGINAL PRACTICE</span><h1>{subjectName} {level}</h1><h2>{paperName}</h2><dl><div><dt>Time allowed</dt><dd>{minutes} minutes</dd></div><div><dt>Total marks</dt><dd>{totalMarks}</dd></div><div><dt>Questions</dt><dd>{questions.length}</dd></div></dl><div className="pdf-instructions"><strong>Instructions to candidates</strong><ul><li>Do not open the online answer-check section until you have finished the timed paper.</li><li>Write all working clearly. Unsupported answers may not receive full marks.</li><li>Use the data, figures and command terms provided in each question.</li><li>This is an original formative practice paper and is not an official IB examination.</li></ul></div><footer>IB Curivo · Question paper only · No markscheme included</footer></section>{questions.map((question, index) => <section data-pdf-page className="pdf-page pdf-question" key={question.id}><header><strong>{subjectName} {level}</strong><span>{paperName}</span></header><div className="pdf-question-meta"><span>Question {index + 1}</span><span>{question.topicCode} · {question.commandTerm ?? question.skill}</span><b>[{question.marks}]</b></div>{question.context && <div className="pdf-source"><strong>Source</strong><p>{question.context}</p></div>}{question.visual && <QuestionVisual type={question.visual} data={question.visualData}/>} {question.starterCode && <pre>{question.starterCode}</pre>}<h2>{question.prompt}</h2>{question.responseType === "mcq" ? <ol className="pdf-choices" type="A">{question.choices?.map((choice) => <li key={choice}>{choice}</li>)}</ol> : <div className="pdf-answer-space">{Array.from({ length: question.responseType === "extended" ? 17 : question.responseType === "code" ? 18 : question.responseType === "diagram" ? 14 : 10 }, (_, line) => <i key={line}/>)}</div>}<footer><span>{index + 1} / {questions.length}</span><span>Write answers in the space provided or on additional paper.</span></footer></section>)}</div>;
 }
 
 type DiagramData = { paths: string[]; labels: Array<{ x: number; y: number; text: string }>; explanation: string };
@@ -715,27 +760,175 @@ function DiagramPad({ value, onChange }: { value: string; onChange: (value: stri
   return <div className="diagram-pad"><div className="diagram-toolbar"><button type="button" onClick={() => addPreset("axes")}>+ Axes</button><button type="button" onClick={() => addPreset("down")}>+ Downward curve</button><button type="button" onClick={() => addPreset("up")}>+ Upward curve</button><button type="button" onClick={() => addPreset("vertical")}>+ Vertical line</button><button type="button" className={tool === "draw" ? "active" : ""} onClick={() => setTool("draw")}>Free draw</button><input aria-label="Diagram label" value={labelText} onChange={(event) => setLabelText(event.target.value)} placeholder="Label"/><button type="button" className={tool === "label" ? "active" : ""} onClick={() => setTool("label")}>Place label</button><button type="button" onClick={() => save({ ...data, paths: data.paths.slice(0, -1) })}>Undo</button><button type="button" onClick={() => save(emptyDiagram())}>Clear</button></div><svg viewBox="0 0 600 350" onPointerDown={begin} onPointerMove={move} onPointerUp={end} onPointerCancel={end} role="img" aria-label="Interactive economics diagram answer canvas"><rect width="600" height="350"/><g>{data.paths.map((path, index) => <path key={`${path}-${index}`} d={path}/>) }{draft && <path d={draft} className="draft"/>}{data.labels.map((label, index) => <text key={`${label.text}-${index}`} x={label.x} y={label.y}>{label.text}</text>)}</g></svg><div className="diagram-help"><strong>How to answer</strong><span>Add axes → add curves/lines → type a label and choose “Place label” → click the diagram. Use Free draw for shifts, arrows and areas.</span></div><textarea value={data.explanation} onChange={(event) => save({ ...data, explanation: event.target.value })} rows={6} placeholder="Explain the diagram using its labels and the economic mechanism…"/></div>;
 }
 
+type VisualData = NonNullable<Question["visualData"]>;
+
+function XYPlot({ x, y, xLabel, yLabel, uncertainty, markers, caption }: { x: number[]; y: number[]; xLabel?: string; yLabel?: string; uncertainty?: number; markers?: VisualData["markers"]; caption: string }) {
+  const minX = Math.min(...x); const maxX = Math.max(...x); const minY = Math.min(...y); const maxY = Math.max(...y);
+  const xPad = Math.max((maxX - minX) * .12, .01); const yPad = Math.max((maxY - minY) * .18, uncertainty ?? .01);
+  const sx = (value: number) => 72 + ((value - (minX - xPad)) / ((maxX + xPad) - (minX - xPad))) * 520;
+  const sy = (value: number) => 202 - ((value - (minY - yPad)) / ((maxY + yPad) - (minY - yPad))) * 158;
+  const plot = x.map((value, index) => `${index ? "L" : "M"}${sx(value).toFixed(1)} ${sy(y[index]).toFixed(1)}`).join(" ");
+  return <figure className="question-visual data-plot"><figcaption>{caption}</figcaption><svg viewBox="0 0 640 260" role="img" aria-label={`${yLabel ?? "y"} plotted against ${xLabel ?? "x"}`}>
+    <path className="axis" d="M65 210V28M65 210H610"/>
+    <path className="best-fit" d={plot}/>
+    {x.map((value, index) => { const cx = sx(value); const cy = sy(y[index]); const error = uncertainty ? Math.abs(sy(y[index] + uncertainty) - cy) : 0; return <g key={`${value}-${index}`}>{error > 0 && <><path className="error-bar" d={`M${cx} ${cy - error}V${cy + error}`}/><path className="error-bar" d={`M${cx - 5} ${cy - error}H${cx + 5}M${cx - 5} ${cy + error}H${cx + 5}`}/></>}<circle cx={cx} cy={cy} r={uncertainty ? 5 : 3.5}/></g>; })}
+    {markers?.map((marker, index) => { const mx1 = sx(marker.x1); const mx2 = sx(marker.x2); const my = 42 + index * 18; return <g key={`${marker.label}-${index}`}><path className="marker" d={`M${mx1} ${my}H${mx2}M${mx1} ${my - 6}V${my + 6}M${mx2} ${my - 6}V${my + 6}`}/><text className="marker-label" x={(mx1 + mx2) / 2} y={my - 10}>{marker.label}</text></g>; })}
+    <text className="axis-label y" x="18" y="25">{yLabel ?? ""}</text>
+    <text className="axis-label" x="520" y="251">{xLabel ?? ""}</text>
+  </svg></figure>;
+}
+
+function BarChartVisual({ data }: { data: VisualData }) {
+  const categories = data.categories ?? [];
+  const series = data.series?.length ? data.series : [{ label: data.yLabel ?? "Value", y: data.y ?? [] }];
+  const allValues = series.flatMap((item) => item.y);
+  const min = Math.min(0, ...allValues); const max = Math.max(0, ...allValues); const span = Math.max(max - min, 1);
+  const zeroY = 205 - ((0 - min) / span) * 150;
+  const groupWidth = 520 / Math.max(categories.length, 1);
+  const barWidth = Math.min(46, (groupWidth - 16) / series.length);
+  return <figure className="question-visual"><figcaption>{data.title ?? "Figure 1: stimulus data"}</figcaption><svg viewBox="0 0 640 285" role="img" aria-label={`${data.yLabel ?? "Value"} bar chart`}>
+    <path className="axis" d={`M70 35V205M70 ${zeroY}H610`}/>
+    {categories.map((category, catIndex) => { const groupX = 80 + catIndex * groupWidth + (groupWidth - series.length * (barWidth + 4)) / 2; return <g key={`${category}-${catIndex}`}>
+      {series.map((item, seriesIndex) => { const value = item.y[catIndex] ?? 0; const height = Math.abs(value) / span * 150; const x = groupX + seriesIndex * (barWidth + 4); const y = value >= 0 ? zeroY - height : zeroY; const err = item.error?.[catIndex]; const errHeight = err ? (err / span) * 150 : 0; return <g key={`${item.label}-${seriesIndex}`}>
+        <rect className={`bar series-${seriesIndex}`} x={x} y={y} width={barWidth} height={Math.max(height, 2)} rx="4"/>
+        {errHeight > 0 && <><path className="error-bar" d={`M${x + barWidth / 2} ${y - errHeight}V${y + errHeight}`}/><path className="error-bar" d={`M${x + barWidth / 2 - 5} ${y - errHeight}H${x + barWidth / 2 + 5}M${x + barWidth / 2 - 5} ${y + errHeight}H${x + barWidth / 2 + 5}`}/></>}
+      </g>; })}
+      <text className="bar-label" x={groupX + (barWidth + 4) * series.length / 2 - 2} y="232">{category}</text>
+    </g>; })}
+    <text className="axis-label y" x="16" y="26">{data.yLabel ?? "Value"}</text>
+    {series.length > 1 && <g className="bar-legend">{series.map((item, index) => <g key={item.label} transform={`translate(${80 + index * 150},250)`}><rect className={`bar series-${index}`} width="14" height="14"/><text x="20" y="12">{item.label}</text></g>)}</g>}
+  </svg>{data.note && <p>{data.note}</p>}</figure>;
+}
+
+function LayeredDiagram({ layers, title, note }: { layers: VisualData["layers"]; title?: string; note?: string }) {
+  const list = layers ?? []; const n = list.length;
+  const baseY = 195, cx = 155, maxW = 120, maxH = 130, minW = 30, minH = 28, labelLineEndX = 320, labelTextX = 328;
+  return <figure className="question-visual"><figcaption>{title ?? "Figure 1: layered structure"}</figcaption><svg viewBox="0 0 640 240" role="img" aria-label={`Cross-section with ${n} labelled layers`}>
+    <path className="axis" d="M40 210H305"/>
+    {list.map((layer, index) => {
+      const t = n > 1 ? index / (n - 1) : 0;
+      const w = maxW - t * (maxW - minW); const h = maxH - t * (maxH - minH);
+      const angle = Math.PI * 0.28;
+      const labelX = cx + w * Math.cos(angle); const labelY = baseY - h * Math.sin(angle);
+      const targetY = 26 + index * (188 / Math.max(n - 1, 1));
+      return <g key={`${layer.label}-${index}`}>
+        <path className="layer" d={`M${cx - w} ${baseY}A${w} ${h} 0 0 1 ${cx + w} ${baseY}`} fillOpacity={0.14 + (1 - t) * 0.5}/>
+        <path className="marker" d={`M${labelX} ${labelY}H${labelLineEndX}`}/>
+        <text className="layer-label" x={labelTextX} y={targetY + 4}>{layer.label}</text>
+      </g>;
+    })}
+  </svg>{note && <p>{note}</p>}</figure>;
+}
+
+function CircularProcess({ nodes, title, note }: { nodes: string[]; title?: string; note?: string }) {
+  const n = nodes.length; const cx = 300, cy = 118, r = 78;
+  const angle = (index: number) => (index / n) * 2 * Math.PI - Math.PI / 2;
+  const pos = (index: number, radius: number) => ({ x: cx + radius * Math.cos(angle(index)), y: cy + radius * Math.sin(angle(index)) });
+  return <figure className="question-visual process-visual"><figcaption>{title ?? "Figure 1: cyclic process"}</figcaption><svg viewBox="0 0 640 240" role="img" aria-label={`Cyclic process with ${n} stages`}>
+    {nodes.map((_, index) => { const a = pos(index, r); const b = pos((index + 1) % n, r); const mx = (a.x + b.x) / 2; const my = (a.y + b.y) / 2; const dx = b.x - a.x; const dy = b.y - a.y; const len = Math.hypot(dx, dy) || 1; const ux = dx / len; const uy = dy / len; const tipX = mx + ux * 9; const tipY = my + uy * 9; const b1x = mx - uy * 6 - ux * 9; const b1y = my + ux * 6 - uy * 9; const b2x = mx + uy * 6 - ux * 9; const b2y = my - ux * 6 - uy * 9; return <g key={`edge-${index}`}><path d={`M${a.x} ${a.y}L${b.x} ${b.y}`}/><path className="cycle-arrow" d={`M${tipX} ${tipY}L${b1x} ${b1y}L${b2x} ${b2y}Z`}/></g>; })}
+    {nodes.map((label, index) => { const p = pos(index, r); const lp = pos(index, r + 46); const cos = Math.cos(angle(index)); const anchor = cos > 0.35 ? "start" : cos < -0.35 ? "end" : "middle"; return <g key={`${label}-${index}`}><circle cx={p.x} cy={p.y} r="14"/><text className="cycle-label" x={lp.x} y={lp.y + 4} style={{ textAnchor: anchor }}>{label}</text></g>; })}
+  </svg>{note && <p>{note}</p>}</figure>;
+}
+
+function NetworkDiagram({ nodes, edges }: { nodes: NonNullable<VisualData["netNodes"]>; edges: NonNullable<VisualData["netEdges"]> }) {
+  const sx = (x: number) => 45 + (x / 100) * 550; const sy = (y: number) => 25 + (y / 100) * 170;
+  const byId = Object.fromEntries(nodes.map((node) => [node.id, node]));
+  return <figure className="question-visual"><figcaption>Figure 1: network topology</figcaption><svg viewBox="0 0 640 220" role="img" aria-label={`Network with ${nodes.length} devices`}>
+    {edges.map((edge, index) => { const a = byId[edge.from]; const b = byId[edge.to]; if (!a || !b) return null; return <path key={`${edge.from}-${edge.to}-${index}`} d={`M${sx(a.x)} ${sy(a.y)}L${sx(b.x)} ${sy(b.y)}`}/>; })}
+    {nodes.map((node) => <g key={node.id}><rect x={sx(node.x) - 46} y={sy(node.y) - 20} width="92" height="40" rx="8"/><text x={sx(node.x)} y={sy(node.y) + 5}>{node.label}</text></g>)}
+  </svg></figure>;
+}
+
+function ERDDiagram({ entities, relationships }: { entities: NonNullable<VisualData["entities"]>; relationships: NonNullable<VisualData["relationships"]> }) {
+  const n = entities.length; const gap = 40; const boxW = Math.min(170, (620 - gap * (n - 1)) / n);
+  const maxFields = Math.max(1, ...entities.map((entity) => entity.fields.length));
+  const topY = 34; const boxH = 46 + maxFields * 20; const detourY = 12;
+  const xs = entities.map((_, index) => 20 + index * (boxW + gap));
+  const centerY = topY + boxH / 2;
+  const indexByName = Object.fromEntries(entities.map((entity, index) => [entity.name, index]));
+  return <figure className="question-visual"><figcaption>Figure 1: entity–relationship diagram</figcaption><svg viewBox={`0 0 640 ${topY + boxH + 20}`} role="img" aria-label={`Entity relationship diagram with ${n} entities`}>
+    {relationships.map((rel, index) => {
+      const ai = indexByName[rel.from]; const bi = indexByName[rel.to]; if (ai === undefined || bi === undefined) return null;
+      const lo = Math.min(ai, bi); const hi = Math.max(ai, bi);
+      const left = xs[lo] + boxW; const right = xs[hi];
+      if (hi - lo === 1) return <g key={`${rel.from}-${rel.to}-${index}`}><path d={`M${left} ${centerY}H${right}`}/><text x={(left + right) / 2} y={centerY - 8}>{rel.label}</text></g>;
+      const midLeft = xs[lo] + boxW / 2; const midRight = xs[hi] + boxW / 2;
+      return <g key={`${rel.from}-${rel.to}-${index}`}><path d={`M${midLeft} ${topY}V${detourY}H${midRight}V${topY}`}/><text x={(midLeft + midRight) / 2} y={detourY - 4}>{rel.label}</text></g>;
+    })}
+    {entities.map((entity, index) => <g key={entity.name}><rect x={xs[index]} y={topY} width={boxW} height={boxH} rx="8"/><text className="entity-name" x={xs[index] + boxW / 2} y={topY + 24}>{entity.name.toUpperCase()}</text>{entity.fields.map((field, fieldIndex) => <text key={field} className="entity-field" x={xs[index] + 14} y={topY + 50 + fieldIndex * 20}>{field}</text>)}</g>)}
+  </svg></figure>;
+}
+
+function gateDepths(gates: NonNullable<VisualData["gates"]>) {
+  const depth: Record<string, number> = {}; const byId = Object.fromEntries(gates.map((gate) => [gate.id, gate]));
+  const resolve = (id: string): number => { if (depth[id] !== undefined) return depth[id]; const gate = byId[id]; if (!gate) return 0; const d = 1 + Math.max(0, ...gate.inputs.map((inputId) => (byId[inputId] ? resolve(inputId) : 0))); depth[id] = d; return d; };
+  gates.forEach((gate) => resolve(gate.id));
+  return depth;
+}
+
+function LogicDiagram({ gates, gateInputs, outputLabel }: { gates: NonNullable<VisualData["gates"]>; gateInputs: string[]; outputLabel?: string }) {
+  const depths = gateDepths(gates);
+  const columns = new Map<number, typeof gates>();
+  gates.forEach((gate) => { const d = depths[gate.id] ?? 1; const list = columns.get(d) ?? []; list.push(gate); columns.set(d, list); });
+  const maxDepth = Math.max(1, ...gates.map((gate) => depths[gate.id] ?? 1));
+  const colWidth = 420 / (maxDepth + 1);
+  const positions: Record<string, { x: number; y: number }> = {};
+  Array.from(columns.entries()).forEach(([depth, colGates]) => { const x = 110 + depth * colWidth; colGates.forEach((gate, i) => { positions[gate.id] = { x, y: 35 + (i + 0.5) * (170 / colGates.length) }; }); });
+  const inputY = (index: number) => 25 + (index + 0.5) * (190 / Math.max(gateInputs.length, 1));
+  const finalGate = gates.find((gate) => !gates.some((other) => other.inputs.includes(gate.id)));
+  const outX = finalGate ? positions[finalGate.id].x + 65 : 560;
+  const outY = finalGate ? positions[finalGate.id].y : 110;
+  return <figure className="question-visual"><figcaption>Figure 1: logic circuit</figcaption><svg viewBox="0 0 640 220" role="img" aria-label={`Logic circuit with ${gates.length} gates`}>
+    {gateInputs.map((label, index) => <text key={label} x="35" y={inputY(index) + 5}>{label}</text>)}
+    {gates.flatMap((gate) => gate.inputs.map((inputId, i) => { const target = positions[gate.id]; if (!target) return null; const inputIndex = gateInputs.indexOf(inputId); const from = positions[inputId] ?? (inputIndex >= 0 ? { x: 55, y: inputY(inputIndex) } : null); if (!from) return null; return <path key={`${gate.id}-${inputId}-${i}`} d={`M${from.x} ${from.y}H${target.x - 40}V${target.y}H${target.x - 30}`}/>; }))}
+    {gates.map((gate) => { const pos = positions[gate.id]; if (!pos) return null; return <g key={gate.id}>
+      {gate.kind === "NOT" ? <path d={`M${pos.x - 30} ${pos.y - 24}V${pos.y + 24}L${pos.x + 24} ${pos.y}Z`}/> : <path d={`M${pos.x - 30} ${pos.y - 24}H${pos.x}A24 24 0 0 1 ${pos.x} ${pos.y + 24}H${pos.x - 30}Z`}/>}
+      {(gate.kind === "NOT" || gate.kind === "NAND" || gate.kind === "NOR") && <circle cx={pos.x + 28} cy={pos.y} r="5"/>}
+      <text className="gate-label" x={pos.x - 15} y={pos.y + 4}>{gate.kind}</text>
+    </g>; })}
+    {finalGate && positions[finalGate.id] && <path d={`M${positions[finalGate.id].x + (gates.find((g) => g.id === finalGate.id)?.kind === "NOT" || gates.find((g) => g.id === finalGate.id)?.kind.startsWith("N") ? 33 : 24)} ${outY}H${outX}`}/>}
+    <text x={outX + 15} y={outY + 5}>{outputLabel ?? "Q"}</text>
+  </svg></figure>;
+}
+
+function CircuitDiagram({ components, cellLabel }: { components: NonNullable<VisualData["components"]>; cellLabel?: string }) {
+  const byBranch = new Map<number, typeof components>();
+  components.forEach((component) => { const list = byBranch.get(component.branch) ?? []; list.push(component); byBranch.set(component.branch, list); });
+  const branchRows = Array.from(byBranch.keys()).filter((n) => n > 0).sort((a, b) => a - b);
+  const leftX = 90, rightX = 545, topY = 55, rowGap = 48;
+  const bottomY = branchRows.length ? topY + branchRows.length * rowGap + 30 : topY + 95;
+  const renderRow = (items: typeof components, y: number) => { const usable = rightX - leftX - 130; return items.map((component, i) => { const x = leftX + 65 + (items.length > 1 ? (i + 0.5) * (usable / items.length) : usable / 2);
+    if (component.kind === "ammeter" || component.kind === "voltmeter") return <g key={`${component.label}-${x}-${y}`}><circle cx={x} cy={y} r="18"/><text x={x} y={y + 5}>{component.kind === "ammeter" ? "A" : "V"}</text></g>;
+    if (component.kind === "switch") return <g key={`${component.label}-${x}-${y}`}><circle cx={x - 22} cy={y} r="3"/><path d={`M${x - 22} ${y}L${x + 16} ${y - 14}`}/><circle cx={x + 22} cy={y} r="3"/></g>;
+    return <g key={`${component.label}-${x}-${y}`}><rect x={x - 40} y={y - 14} width="80" height="28"/><text x={x} y={y + 5}>{component.label}</text></g>; }); };
+  return <figure className="question-visual"><figcaption>Figure 1: electrical circuit</figcaption><svg viewBox={`0 0 640 ${bottomY + 25}`} role="img" aria-label="Circuit diagram">
+    <path d={`M${leftX} ${topY}V${bottomY}M${rightX} ${topY}V${bottomY}M${leftX} ${bottomY}H${rightX}M${leftX} ${topY}H${leftX + 30}M${leftX + 58} ${topY}H${rightX}`}/>
+    <path d={`M${leftX + 30} ${topY - 16}V${topY + 16}M${leftX + 44} ${topY - 9}V${topY + 9}`}/>
+    <text x={leftX + 15} y={topY - 24}>{cellLabel ?? "cell"}</text>
+    {renderRow(byBranch.get(0) ?? [], topY)}
+    {branchRows.map((branch, index) => <path key={`wire-${branch}`} d={`M${leftX} ${topY + (index + 1) * rowGap}H${rightX}`}/>)}
+    {branchRows.map((branch, index) => renderRow(byBranch.get(branch) ?? [], topY + (index + 1) * rowGap))}
+  </svg></figure>;
+}
+
 function QuestionVisual({ type, data }: { type: NonNullable<Question["visual"]>; data?: Question["visualData"] }) {
-  const label = type === "motion-graph" ? "velocity / m s⁻¹" : type === "function-graph" ? "f(x)" : type === "data-graph" ? "measured value" : "Figure 1";
   if (type === "data-table" && data?.columns?.length && data.rows?.length) return <figure className="question-visual stimulus-table"><figcaption>{data.title ?? "Table 1: stimulus data"}</figcaption><div className="table-scroll"><table><thead><tr><th scope="col">Period / group</th>{data.columns.map((column) => <th scope="col" key={column}>{column}</th>)}</tr></thead><tbody>{data.rows.map((row) => <tr key={row.label}><th scope="row">{row.label}</th>{row.values.map((value, index) => <td key={`${row.label}-${index}`}>{value}</td>)}</tr>)}</tbody></table></div>{data.note && <p>{data.note}</p>}</figure>;
-  if (type === "bar-chart" && data?.categories?.length && data.y?.length === data.categories.length) {
-    const values = data.y; const min = Math.min(0, ...values); const max = Math.max(0, ...values); const span = Math.max(max - min, 1); const zeroY = 205 - ((0 - min) / span) * 150; const barWidth = Math.min(70, 390 / values.length); const gap = 500 / values.length;
-    return <figure className="question-visual"><figcaption>{data.title ?? "Figure 1: stimulus data"}</figcaption><svg viewBox="0 0 640 285" role="img" aria-label={`${data.yLabel ?? "Value"} bar chart`}><path className="axis" d={`M70 35V205M70 ${zeroY}H610`}/>{values.map((value, index) => { const height = Math.abs(value) / span * 150; const x = 90 + index * gap + (gap - barWidth) / 2; const y = value >= 0 ? zeroY - height : zeroY; return <g key={`${data.categories?.[index]}-${index}`}><rect className="bar" x={x} y={y} width={barWidth} height={Math.max(height, 2)} rx="5"/><text className="bar-value" x={x + barWidth / 2} y={value >= 0 ? y - 8 : y + height + 15}>{value}{data.yLabel?.includes("%") ? "%" : ""}</text><text className="bar-label" x={x + barWidth / 2} y="232">{data.categories?.[index]}</text></g>; })}<text className="axis-label y" x="16" y="26">{data.yLabel ?? "Value"}</text></svg>{data.note && <p>{data.note}</p>}</figure>;
-  }
+  if (type === "bar-chart" && data?.categories?.length && (data.series?.length || data.y?.length === data.categories.length)) return <BarChartVisual data={data}/>;
   if (type === "geo-map") return <figure className="question-visual"><figcaption>{data?.title ?? "Figure 1: spatial pattern"}</figcaption><svg viewBox="0 0 640 300" role="img" aria-label="Schematic choropleth map showing a transport corridor, urban core, rural periphery and hazard-exposed districts"><path className="region low" d="M55 42L260 28L305 120L230 270L55 230Z"/><path className="region medium" d="M260 28L520 48L590 210L395 270L305 120Z"/><path className="region high" d="M205 92L360 70L455 142L355 220L230 185Z"/><path className="corridor" d="M75 238C190 194 270 155 365 112S505 70 570 58"/><path className="hazard" d="M82 62L190 50L207 125L105 145Z M455 176L565 165L580 228L482 246Z"/><circle cx="325" cy="145" r="10"/><text x="325" y="170">Urban core</text><text x="130" y="205">Rural periphery</text><text x="478" y="92">Transport corridor</text><g className="map-key"><rect x="75" y="270" width="18" height="12" className="key-low"/><text x="125" y="280">Lower</text><rect x="185" y="270" width="18" height="12" className="key-medium"/><text x="240" y="280">Medium</text><rect x="300" y="270" width="18" height="12" className="key-high"/><text x="345" y="280">Higher</text><rect x="420" y="270" width="18" height="12" className="key-hazard"/><text x="505" y="280">Hazard-exposed</text></g></svg>{data?.rows?.length && <div className="mini-data-row">{data.rows.map((row) => <span key={row.label}><strong>{row.label}</strong>{row.values.join(" → ")}</span>)}</div>}{data?.note && <p>{data.note}</p>}</figure>;
-  if (type === "process-flow" && data?.nodes?.length) return <figure className="question-visual process-visual"><figcaption>{data.title ?? "Figure 1: process flow"}</figcaption><div className="process-nodes">{data.nodes.map((node, index) => <div key={`${node}-${index}`}><span>{index + 1}</span><strong>{node}</strong>{index < (data.nodes?.length ?? 0) - 1 && <i aria-hidden="true">→</i>}</div>)}</div>{data.note && <p>{data.note}</p>}</figure>;
+  if (type === "process-flow" && data?.nodes?.length) return data.layout === "circular" ? <CircularProcess nodes={data.nodes} title={data.title} note={data.note}/> : <figure className="question-visual process-visual"><figcaption>{data.title ?? "Figure 1: process flow"}</figcaption><div className="process-nodes">{data.nodes.map((node, index) => <div key={`${node}-${index}`}><span>{index + 1}</span><strong>{node}</strong>{index < (data.nodes?.length ?? 0) - 1 && <i aria-hidden="true">→</i>}</div>)}</div>{data.note && <p>{data.note}</p>}</figure>;
+  if (type === "layered-diagram" && data?.layers?.length) return <LayeredDiagram layers={data.layers} title={data.title} note={data.note}/>;
+  if (type === "network" && data?.netNodes?.length) return <NetworkDiagram nodes={data.netNodes} edges={data.netEdges ?? []}/>;
   if (type === "network") return <figure className="question-visual"><figcaption>Figure 1: network topology</figcaption><svg viewBox="0 0 640 220" role="img" aria-label="Network containing a router, switch, server and three clients"><rect x="275" y="18" width="90" height="44" rx="8"/><text x="320" y="45">Router</text><rect x="275" y="92" width="90" height="44" rx="8"/><text x="320" y="119">Switch</text><rect x="60" y="164" width="100" height="40" rx="8"/><text x="110" y="189">Client A</text><rect x="270" y="164" width="100" height="40" rx="8"/><text x="320" y="189">Server</text><rect x="480" y="164" width="100" height="40" rx="8"/><text x="530" y="189">Client B</text><path d="M320 62V92M300 136L110 164M320 136V164M340 136L530 164"/></svg></figure>;
+  if (type === "logic" && data?.gates?.length && data.gateInputs?.length) return <LogicDiagram gates={data.gates} gateInputs={data.gateInputs} outputLabel={data.outputLabel}/>;
   if (type === "logic") return <figure className="question-visual"><figcaption>Figure 1: logic circuit</figcaption><svg viewBox="0 0 640 210" role="img" aria-label="Two inputs pass through an AND gate, followed by a NOT gate"><text x="35" y="68">A</text><text x="35" y="145">B</text><path d="M55 62H210M55 139H210M210 35H285A55 55 0 0 1 285 165H210Z M340 100H445M445 60L535 100L445 140Z M535 100H595"/><circle cx="548" cy="100" r="12"/><text x="605" y="106">Q</text><text x="243" y="106">AND</text><text x="466" y="106">NOT</text></svg></figure>;
+  if (type === "erd" && data?.entities?.length) return <ERDDiagram entities={data.entities} relationships={data.relationships ?? []}/>;
   if (type === "erd") return <figure className="question-visual"><figcaption>Figure 1: entity–relationship diagram</figcaption><svg viewBox="0 0 640 230" role="img" aria-label="Student and Course entities connected through Enrollment"><rect x="25" y="45" width="150" height="120" rx="8"/><text x="100" y="73">STUDENT</text><text x="45" y="105">PK student_id</text><text x="45" y="135">name</text><rect x="245" y="70" width="150" height="80" rx="8"/><text x="320" y="98">ENROLLMENT</text><text x="265" y="130">grade</text><rect x="465" y="45" width="150" height="120" rx="8"/><text x="540" y="73">COURSE</text><text x="485" y="105">PK course_id</text><text x="485" y="135">title</text><path d="M175 105H245M395 105H465"/><text x="197" y="96">1:M</text><text x="414" y="96">M:1</text></svg></figure>;
+  if (type === "circuit" && data?.components?.length) return <CircuitDiagram components={data.components} cellLabel={data.cellLabel}/>;
   if (type === "circuit") return <figure className="question-visual"><figcaption>Figure 1: electrical circuit</figcaption><svg viewBox="0 0 640 220" role="img" aria-label="Cell connected to two parallel resistors and an ammeter"><path d="M90 55H290M350 55H545V180H90V55M290 30V80M315 20V90M350 55H315M200 55V105H440V55M200 105V150H440V105"/><rect x="270" y="91" width="100" height="28"/><text x="320" y="111">R₁ = 6 Ω</text><rect x="270" y="136" width="100" height="28"/><text x="320" y="156">R₂ = 3 Ω</text><circle cx="510" cy="180" r="25"/><text x="510" y="187">A</text></svg></figure>;
-  if (type === "wave") return <figure className="question-visual"><figcaption>Figure 1: wave at one instant</figcaption><svg viewBox="0 0 640 230" role="img" aria-label="Sinusoidal wave with displacement and distance axes"><path className="axis" d="M55 190V25M55 110H610"/><path className="plot" d="M55 110C95 25 135 25 175 110S255 195 295 110S375 25 415 110S495 195 535 110S595 45 610 70"/><text x="15" y="25">y</text><text x="590" y="136">x / m</text><path d="M95 48H375M95 42V54M375 42V54"/><text x="227" y="38">λ</text></svg></figure>;
-  if (type === "data-graph" && data?.x?.length && data.y?.length === data.x.length) {
-    const minX = Math.min(...data.x); const maxX = Math.max(...data.x); const minY = Math.min(...data.y); const maxY = Math.max(...data.y);
-    const xPad = Math.max((maxX - minX) * .12, .01); const yPad = Math.max((maxY - minY) * .18, data.uncertainty ?? .01);
-    const sx = (value: number) => 72 + ((value - (minX - xPad)) / ((maxX + xPad) - (minX - xPad))) * 520;
-    const sy = (value: number) => 202 - ((value - (minY - yPad)) / ((maxY + yPad) - (minY - yPad))) * 158;
-    const plot = data.x.map((value, index) => `${index ? "L" : "M"}${sx(value).toFixed(1)} ${sy(data.y[index]).toFixed(1)}`).join(" ");
-    return <figure className="question-visual data-plot"><figcaption>Figure 1: experimental data with uncertainty</figcaption><svg viewBox="0 0 640 260" role="img" aria-label={`${data.yLabel} plotted against ${data.xLabel}`}><path className="axis" d="M65 210V28M65 210H610"/><path className="best-fit" d={plot}/>{data.x.map((value, index) => { const cx = sx(value); const cy = sy(data.y[index]); const error = Math.abs(sy(data.y[index] + (data.uncertainty ?? 0)) - cy); return <g key={`${value}-${index}`}>{error > 0 && <><path className="error-bar" d={`M${cx} ${cy-error}V${cy+error}`}/><path className="error-bar" d={`M${cx-5} ${cy-error}H${cx+5}M${cx-5} ${cy+error}H${cx+5}`}/></>}<circle cx={cx} cy={cy} r="5"/><text className="tick-label" x={cx} y={229}>{value.toFixed(2)}</text></g>;})}<text className="axis-label y" x="18" y="25">{data.yLabel}</text><text className="axis-label" x="520" y="251">{data.xLabel}</text></svg></figure>;
+  if ((type === "motion-graph" || type === "function-graph" || type === "wave" || type === "data-graph") && data?.x?.length && data.y?.length === data.x.length) {
+    const caption = type === "motion-graph" ? "Figure 1: velocity–time graph" : type === "function-graph" ? "Figure 1: function model" : type === "wave" ? "Figure 1: wave at one instant" : "Figure 1: experimental data with uncertainty";
+    return <XYPlot x={data.x} y={data.y} xLabel={data.xLabel} yLabel={data.yLabel} uncertainty={data.uncertainty} markers={data.markers} caption={caption}/>;
   }
+  const label = type === "motion-graph" ? "velocity / m s⁻¹" : type === "function-graph" ? "f(x)" : type === "data-graph" ? "measured value" : "Figure 1";
   return <figure className="question-visual"><figcaption>Figure 1: {type === "motion-graph" ? "velocity–time graph" : type === "function-graph" ? "function model" : "experimental data"}</figcaption><svg viewBox="0 0 640 250" role="img" aria-label={label}><path className="axis" d="M65 205V25M65 205H610"/><path className="plot" d={type === "motion-graph" ? "M65 180L190 70L330 70L470 165L580 165" : type === "function-graph" ? "M70 190C155 187 195 165 245 122S350 35 430 75S520 175 595 190" : "M80 182L160 160L240 135L320 115L400 82L480 70L570 45"}/><text x="8" y="30">{label}</text><text x="545" y="232">{type === "motion-graph" ? "time / s" : "independent variable"}</text>{type === "data-graph" && [80,160,240,320,400,480,570].map((x,index)=><circle key={x} cx={x} cy={[182,160,135,115,82,70,45][index]} r="5"/>)}</svg></figure>;
 }

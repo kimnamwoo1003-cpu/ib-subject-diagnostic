@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ib-subject-diagnostic",
+  "compatibility_date": "2026-05-22",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "main": "./worker/index.ts",
+  "assets": {
+    "directory": "dist/client",
+    "not_found_handling": "none",
+    "binding": "ASSETS"
+  },
+  "images": {
+    "binding": "IMAGES"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ib-subject-diagnostic-db",
+      "database_id": "b5274786-dbde-402e-8ce6-db4f9c51ab1f"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "ib-subject-diagnostic-r2"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "ibcurivo.com",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.ibcurivo.com",
+      "custom_domain": true
+    }
+  ]
+}

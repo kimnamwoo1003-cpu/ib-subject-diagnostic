@@ -63,7 +63,7 @@ export type Question = {
   skill: string;
   difficulty: "Foundation" | "Standard" | "Challenge";
   premiumOnly?: boolean;
-  visual?: "motion-graph" | "circuit" | "wave" | "network" | "logic" | "erd" | "data-graph" | "function-graph" | "data-table" | "bar-chart" | "geo-map" | "process-flow";
+  visual?: "motion-graph" | "circuit" | "wave" | "network" | "logic" | "erd" | "data-graph" | "function-graph" | "data-table" | "bar-chart" | "geo-map" | "process-flow" | "layered-diagram";
   visualData?: {
     xLabel?: string;
     yLabel?: string;
@@ -74,7 +74,28 @@ export type Question = {
     columns?: string[];
     rows?: Array<{ label: string; values: Array<string | number> }>;
     categories?: string[];
+    /** Grouped/error-bar bar charts: one series per group, each series has one value per category. */
+    series?: Array<{ label: string; y: number[]; error?: number[] }>;
     nodes?: string[];
+    /** process-flow only: "circular" arranges nodes in a ring with a closing arrow back to the first node (e.g. life cycles, nutrient cycles). Defaults to "linear". */
+    layout?: "linear" | "circular";
+    /** Bracket + label spanning two x-values on a data-graph/function-graph/motion-graph/wave plot (e.g. marking a wavelength, period, half-life or equivalence point). */
+    markers?: Array<{ x1: number; x2: number; label: string }>;
+    /** layered-diagram only: ordered outermost-to-innermost (e.g. biofilm activity zones, atmosphere layers, cell membrane, Earth cross-section). */
+    layers?: Array<{ label: string }>;
+    /** erd only. */
+    entities?: Array<{ name: string; fields: string[] }>;
+    relationships?: Array<{ from: string; to: string; label: string }>;
+    /** network only: positions are normalized 0-100 on both axes. */
+    netNodes?: Array<{ id: string; label: string; x: number; y: number }>;
+    netEdges?: Array<{ from: string; to: string }>;
+    /** logic only: gates are laid out left-to-right by dependency depth; inputs list the gate ids (or "IN:<label>" for a raw input line) feeding each gate. */
+    gates?: Array<{ id: string; kind: "AND" | "OR" | "NOT" | "NAND" | "NOR" | "XOR"; inputs: string[] }>;
+    gateInputs?: string[];
+    outputLabel?: string;
+    /** circuit only: cell plus resistor-like components, each assigned to a branch number (0 = main/series branch; 1+ = parallel branches across the same two nodes). */
+    components?: Array<{ kind: "resistor" | "ammeter" | "voltmeter" | "bulb" | "switch" | "capacitor"; label: string; branch: number }>;
+    cellLabel?: string;
     note?: string;
   };
   starterCode?: string;

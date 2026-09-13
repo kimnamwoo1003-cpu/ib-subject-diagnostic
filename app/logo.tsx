@@ -1,10 +1,9 @@
 export function BrandLogo({ compact = false }: { compact?: boolean }) {
   return <span className={`site-logo ${compact ? "compact" : ""}`} aria-hidden="true">
     <svg viewBox="0 0 48 48" role="img">
-      <path className="logo-tile" d="M7 5h34a4 4 0 0 1 4 4v30a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a4 4 0 0 1 4-4Z"/>
-      <path className="logo-book" d="M11 14c5.6 0 9.9 1.5 13 4.5V36c-3.1-3-7.4-4.5-13-4.5V14Zm26 0c-5.6 0-9.9 1.5-13 4.5V36c3.1-3 7.4-4.5 13-4.5V14Z"/>
-      <path className="logo-path" d="m17 27 4-4 4 3 7-8"/>
-      <circle className="logo-dot" cx="32" cy="18" r="2.4"/>
+      <circle className="logo-ring-outer" cx="24" cy="24" r="18" pathLength="100" strokeDasharray="76 24" strokeDashoffset="7" fill="none" strokeLinecap="round"/>
+      <circle className="logo-ring-inner" cx="24" cy="24" r="10" pathLength="100" strokeDasharray="58 42" strokeDashoffset="-34" fill="none" strokeLinecap="round"/>
+      <circle className="logo-dot" cx="36.7" cy="15.9" r="2.6"/>
     </svg>
   </span>;
 }
@@ -12,6 +11,6 @@ export function BrandLogo({ compact = false }: { compact?: boolean }) {
 export function BrandLockup({ light = false }: { light?: boolean }) {
   return <span className={`brand-lockup ${light ? "light" : ""}`}>
     <BrandLogo/>
-    <span><strong>Subject Diagnostic</strong><small>IB-style adaptive practice</small></span>
+    <span><strong>Curivo</strong><small>IB-style adaptive practice</small></span>
   </span>;
 }
