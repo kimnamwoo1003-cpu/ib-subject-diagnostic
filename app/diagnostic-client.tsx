@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import AdminClient from "./admin/admin-client";
-import { getAptitudeQuestion } from "./aptitude-quiz";
+import { type AptitudeQuestion, getAptitudeQuestions } from "./aptitude-quiz";
 import CommunityClient from "./community-client";
 import { buildUniqueQuestionPool, getAssessmentCriteria, getPapers, getRelevantTopics, Level, Question, subjectCatalog, subjects } from "./data";
 import GradeTracker from "./grade-tracker";
@@ -644,12 +644,12 @@ const wizardLanguages: Array<{ code: WizardLang; label: string }> = [
 ];
 
 const wizardCopy: Record<WizardLang, Record<string, string>> = {
-  en: { welcome: "Welcome to IB Curivo! Which language should I speak?", confirmLanguage: "Great, I'll speak in English from now on!", askGrade: "Nice to meet you! What grade are you in?", askTrack: "You're in Grade 10 — let's find your subjects together. Are you leaning more toward Sciences or Humanities?", askCandidates: "Good choice! Pick a few subjects you're considering — you can pick several.", quizIntro: "Let's try one quick sample question from each subject you picked", quizDone: "Nice work! Based on your answers, here's what I'd recommend.", goToPicker: "Now let's lock in your final six subjects" },
-  ko: { welcome: "IB Curivo에 오신 걸 환영해요! 어떤 언어로 이야기할까요?", confirmLanguage: "좋아요, 이제부터 한국어로 이야기할게요!", askGrade: "만나서 반가워요! 지금 몇 학년이에요?", askTrack: "10학년이군요 — 어떤 과목이 맞을지 같이 찾아봐요. Sciences 쪽에 더 끌려요, Humanities 쪽에 더 끌려요?", askCandidates: "좋아요! 지금 생각하고 있는 과목들을 몇 개 골라볼래요 — 여러 개 선택 가능해요.", quizIntro: "고른 과목마다 짧은 샘플 문제를 하나씩 풀어볼게요", quizDone: "잘했어요! 답변을 보고 이런 과목들을 추천해볼게요.", goToPicker: "이제 최종 6과목을 확정해볼까요" },
-  ja: { welcome: "IB Curivoへようこそ！どの言語で話しましょうか？", confirmLanguage: "了解です、これからは日本語で話しますね！", askGrade: "はじめまして！今、何年生ですか？", askTrack: "10年生ですね — 合う科目を一緒に探しましょう。Sciences寄りですか、Humanities寄りですか？", askCandidates: "いいですね！今考えている科目をいくつか選んでみてください — 複数選択できます。", quizIntro: "選んだ科目ごとに、簡単なサンプル問題を一つずつ試してみましょう", quizDone: "よくできました！答えをもとに、こんな科目がおすすめです。", goToPicker: "では最終的な6科目を決めましょう" },
-  fr: { welcome: "Bienvenue sur IB Curivo ! Dans quelle langue veux-tu que je parle ?", confirmLanguage: "Parfait, je vais parler en français maintenant !", askGrade: "Ravi de te rencontrer ! Tu es en quelle année ?", askTrack: "Tu es en Grade 10 — trouvons tes matières ensemble. Tu es plutôt attiré par les Sciences ou les Humanities ?", askCandidates: "Bon choix ! Choisis quelques matières que tu envisages — tu peux en choisir plusieurs.", quizIntro: "Essayons une petite question type pour chaque matière choisie", quizDone: "Bien joué ! D'après tes réponses, voici ce que je recommande.", goToPicker: "Passons maintenant au choix final de tes six matières" },
-  it: { welcome: "Benvenuto/a su IB Curivo! In quale lingua devo parlare?", confirmLanguage: "Perfetto, ora parlerò in italiano!", askGrade: "Piacere di conoscerti! In che anno sei?", askTrack: "Sei al Grade 10 — troviamo insieme le tue materie. Sei più orientato/a verso le Sciences o le Humanities?", askCandidates: "Ottima scelta! Scegli alcune materie che stai considerando — puoi sceglierne più di una.", quizIntro: "Proviamo una breve domanda di esempio per ogni materia scelta", quizDone: "Ottimo lavoro! In base alle tue risposte, ecco cosa ti consiglio.", goToPicker: "Ora scegliamo le tue sei materie definitive" },
-  zh: { welcome: "欢迎来到 IB Curivo！你想用哪种语言交流？", confirmLanguage: "好的，接下来我会用中文和你交流！", askGrade: "很高兴认识你！你现在读几年级？", askTrack: "你是10年级 — 我们一起来找找适合你的科目吧。你更偏向 Sciences 还是 Humanities？", askCandidates: "不错的选择！挑几个你正在考虑的科目吧 — 可以多选。", quizIntro: "我们来试试每个科目的一道简单示例题", quizDone: "做得好！根据你的答案，我推荐这些科目。", goToPicker: "现在来确定你最终的六门科目吧" },
+  en: { welcome: "Welcome to IB Curivo! Which language should I speak?", confirmLanguage: "Great, I'll speak in English from now on!", askGrade: "Nice to meet you! What grade are you in?", askTrack: "You're in Grade 10 — let's find your subjects together. Are you leaning more toward Sciences or Humanities?", askCandidates: "Good choice! Pick a few subjects you're considering — you can pick several.", quizIntro: "Let's try 3 challenging questions for each subject you picked", quizDone: "Nice work! Based on your answers, here's what I'd recommend.", goToPicker: "Now let's lock in your final six subjects" },
+  ko: { welcome: "IB Curivo에 오신 걸 환영해요! 어떤 언어로 이야기할까요?", confirmLanguage: "좋아요, 이제부터 한국어로 이야기할게요!", askGrade: "만나서 반가워요! 지금 몇 학년이에요?", askTrack: "10학년이군요 — 어떤 과목이 맞을지 같이 찾아봐요. Sciences 쪽에 더 끌려요, Humanities 쪽에 더 끌려요?", askCandidates: "좋아요! 지금 생각하고 있는 과목들을 몇 개 골라볼래요 — 여러 개 선택 가능해요.", quizIntro: "고른 과목마다 어려운 문제를 3개씩 풀어볼게요", quizDone: "잘했어요! 답변을 보고 이런 과목들을 추천해볼게요.", goToPicker: "이제 최종 6과목을 확정해볼까요" },
+  ja: { welcome: "IB Curivoへようこそ！どの言語で話しましょうか？", confirmLanguage: "了解です、これからは日本語で話しますね！", askGrade: "はじめまして！今、何年生ですか？", askTrack: "10年生ですね — 合う科目を一緒に探しましょう。Sciences寄りですか、Humanities寄りですか？", askCandidates: "いいですね！今考えている科目をいくつか選んでみてください — 複数選択できます。", quizIntro: "選んだ科目ごとに、難しめの問題を3問ずつ解いてみましょう", quizDone: "よくできました！答えをもとに、こんな科目がおすすめです。", goToPicker: "では最終的な6科目を決めましょう" },
+  fr: { welcome: "Bienvenue sur IB Curivo ! Dans quelle langue veux-tu que je parle ?", confirmLanguage: "Parfait, je vais parler en français maintenant !", askGrade: "Ravi de te rencontrer ! Tu es en quelle année ?", askTrack: "Tu es en Grade 10 — trouvons tes matières ensemble. Tu es plutôt attiré par les Sciences ou les Humanities ?", askCandidates: "Bon choix ! Choisis quelques matières que tu envisages — tu peux en choisir plusieurs.", quizIntro: "Essayons 3 questions difficiles pour chaque matière choisie", quizDone: "Bien joué ! D'après tes réponses, voici ce que je recommande.", goToPicker: "Passons maintenant au choix final de tes six matières" },
+  it: { welcome: "Benvenuto/a su IB Curivo! In quale lingua devo parlare?", confirmLanguage: "Perfetto, ora parlerò in italiano!", askGrade: "Piacere di conoscerti! In che anno sei?", askTrack: "Sei al Grade 10 — troviamo insieme le tue materie. Sei più orientato/a verso le Sciences o le Humanities?", askCandidates: "Ottima scelta! Scegli alcune materie che stai considerando — puoi sceglierne più di una.", quizIntro: "Proviamo 3 domande impegnative per ogni materia scelta", quizDone: "Ottimo lavoro! In base alle tue risposte, ecco cosa ti consiglio.", goToPicker: "Ora scegliamo le tue sei materie definitive" },
+  zh: { welcome: "欢迎来到 IB Curivo！你想用哪种语言交流？", confirmLanguage: "好的，接下来我会用中文和你交流！", askGrade: "很高兴认识你！你现在读几年级？", askTrack: "你是10年级 — 我们一起来找找适合你的科目吧。你更偏向 Sciences 还是 Humanities？", askCandidates: "不错的选择！挑几个你正在考虑的科目吧 — 可以多选。", quizIntro: "我们来做每个所选科目的3道有挑战性的题", quizDone: "做得好！根据你的答案，我推荐这些科目。", goToPicker: "现在来确定你最终的六门科目吧" },
 };
 
 const scienceTrackIds = ["math", "math-ai", "physics", "chemistry", "biology", "cs", "ess", "sehs", "design-technology"];
@@ -686,14 +686,10 @@ function SpeechBubble({ text, onTalking }: { text: string; onTalking?: (talking:
   return <div className="speech-bubble"><p>{shown}</p></div>;
 }
 
-function QuizStep({ question, subjectId, index, total, onAnswer }: { question: Question | null; subjectId: string; index: number; total: number; onAnswer: (value: string) => void }) {
-  const [text, setText] = useState("");
-  const subjectName = subjectCatalog.find((item) => item.id === subjectId)?.name ?? subjectId;
-  if (!question) return <div className="wizard-quiz"><span className="eyebrow">{index + 1} / {total} · {subjectName}</span><p>No sample question is available for this subject yet.</p><button type="button" className="primary-button wizard-continue" onClick={() => onAnswer("")}>Skip <span>→</span></button></div>;
-  return <div className="wizard-quiz"><span className="eyebrow">{index + 1} / {total} · {subjectName}</span><h2>{question.prompt}</h2>
-    {question.responseType === "mcq"
-      ? <div className="choice-list">{question.choices?.map((choice, choiceIndex) => <button type="button" key={choice} onClick={() => onAnswer(String(choiceIndex))}><span>{String.fromCharCode(65 + choiceIndex)}</span><p>{choice}</p></button>)}</div>
-      : <div className="wizard-quiz-response"><textarea value={text} onChange={(event) => setText(event.target.value)} rows={4} placeholder="Write a quick answer…"/><button type="button" className="primary-button wizard-continue" onClick={() => onAnswer(text)}>Next <span>→</span></button></div>}
+function QuizStep({ question, index, total, onAnswer }: { question: AptitudeQuestion; index: number; total: number; onAnswer: (value: string) => void }) {
+  const subjectName = subjectCatalog.find((item) => item.id === question.subjectId)?.name ?? question.subjectId;
+  return <div className="wizard-quiz" key={question.id}><span className="eyebrow">{index + 1} / {total} · {subjectName}</span><span className="quiz-kind">{question.kind === "myp" ? "MYP Year 5 level" : `Think like a ${subjectName} student`}</span><h2>{question.prompt}</h2>
+    <div className="choice-list">{question.choices?.map((choice, choiceIndex) => <button type="button" key={choice} onClick={() => onAnswer(String(choiceIndex))}><span>{String.fromCharCode(65 + choiceIndex)}</span><p>{choice}</p></button>)}</div>
   </div>;
 }
 
@@ -704,7 +700,7 @@ function OnboardingWizard({ name, onSaved }: { name: string; onSaved: () => Prom
   const [track, setTrack] = useState<"science" | "humanities" | null>(null);
   const [candidates, setCandidates] = useState<string[]>([]);
   const [quizIndex, setQuizIndex] = useState(0);
-  const [quizQuestions, setQuizQuestions] = useState<Array<{ subjectId: string; question: Question | null }>>([]);
+  const [quizQuestions, setQuizQuestions] = useState<AptitudeQuestion[]>([]);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
   const [savingGrade, setSavingGrade] = useState(false);
   const [talking, setTalking] = useState(false);
@@ -720,22 +716,25 @@ function OnboardingWizard({ name, onSaved }: { name: string; onSaved: () => Prom
   const toggleCandidate = (id: string) => setCandidates((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
 
   const startQuiz = () => {
-    const questions = candidates.map((subjectId) => ({ subjectId, question: getAptitudeQuestion(subjectId) }));
-    setQuizQuestions(questions); setQuizIndex(0); setStep("quiz");
+    setQuizQuestions(candidates.flatMap((subjectId) => getAptitudeQuestions(subjectId))); setQuizAnswers({}); setQuizIndex(0); setStep("quiz");
   };
 
   const answerQuiz = (value: string) => {
     const current = quizQuestions[quizIndex];
-    if (current) setQuizAnswers((map) => ({ ...map, [current.subjectId]: value }));
+    if (current) setQuizAnswers((map) => ({ ...map, [current.id]: value }));
     if (quizIndex + 1 < quizQuestions.length) setQuizIndex((index) => index + 1); else setStep("recommend");
   };
 
-  const recommended = useMemo(() => quizQuestions.map(({ subjectId, question }) => {
-    const answer = quizAnswers[subjectId];
-    if (!question) return { subjectId, score: answer ? 1 : 0 };
-    if (question.responseType === "mcq") return { subjectId, score: answer !== undefined && Number(answer) === question.correctIndex ? 2 : 0 };
-    return { subjectId, score: answer && answer.trim().length > 5 ? 1 : 0 };
-  }).filter((item) => item.score > 0).sort((a, b) => b.score - a.score).map((item) => item.subjectId), [quizQuestions, quizAnswers]);
+  const results = useMemo(() => candidates.map((subjectId) => {
+    const own = quizQuestions.filter((question) => question.subjectId === subjectId);
+    const correct = own.filter((question) => quizAnswers[question.id] !== undefined && Number(quizAnswers[question.id]) === question.correctIndex).length;
+    return { subjectId, correct, total: own.length };
+  }).filter((item) => item.total > 0), [candidates, quizQuestions, quizAnswers]);
+  const strong = results.filter((item) => item.correct / item.total >= 2 / 3).sort((a, b) => b.correct / b.total - a.correct / a.total);
+  const bestScore = Math.max(0, ...results.map((item) => item.correct));
+  const fallback = results.filter((item) => item.correct === bestScore && bestScore > 0);
+  const shown = strong.length ? strong : fallback;
+  const recommended = shown.map((item) => item.subjectId);
 
   if (step === "picker") return <SubjectOnboarding name={name} current={grade === "10" ? recommended.slice(0, 6) : []} currentLevels={{}} onSaved={onSaved}/>;
 
@@ -755,10 +754,11 @@ function OnboardingWizard({ name, onSaved }: { name: string; onSaved: () => Prom
       <div className="wizard-candidate-grid">{candidateList.map((id) => { const subject = subjectCatalog.find((item) => item.id === id); if (!subject) return null; return <button type="button" key={id} className={candidates.includes(id) ? "selected" : ""} onClick={() => toggleCandidate(id)}>{subject.name}</button>; })}</div>
       <button type="button" className="primary-button wizard-continue" disabled={!candidates.length} onClick={startQuiz}>{t.quizIntro} <span>→</span></button>
     </>}
-    {step === "quiz" && (currentQuiz ? <QuizStep question={currentQuiz.question} subjectId={currentQuiz.subjectId} index={quizIndex} total={quizQuestions.length} onAnswer={answerQuiz}/> : <p>Loading…</p>)}
+    {step === "quiz" && (currentQuiz ? <QuizStep question={currentQuiz} index={quizIndex} total={quizQuestions.length} onAnswer={answerQuiz}/> : <p>Loading…</p>)}
     {step === "recommend" && <>
       <SpeechBubble text={t.quizDone} onTalking={setTalking}/>
-      <ul className="wizard-recommend-list">{(recommended.length ? recommended : candidates).map((id) => <li key={id}>{subjectCatalog.find((item) => item.id === id)?.name ?? id}</li>)}</ul>
+      {!strong.length && <p className="wizard-recommend-note">{shown.length ? "No subject reached 2 out of 3 correct, so these are your strongest results so far — you can still choose any subject you like." : "None of the questions were answered correctly this time — you can still choose any subject you like in the next step."}</p>}
+      <ul className="wizard-recommend-list">{shown.map((item) => <li key={item.subjectId}>{subjectCatalog.find((subject) => subject.id === item.subjectId)?.name ?? item.subjectId}<small>{item.correct}/{item.total} correct</small></li>)}</ul>
       <button type="button" className="primary-button wizard-continue" onClick={() => setStep("picker")}>{t.goToPicker} <span>→</span></button>
     </>}
   </main>;
