@@ -516,7 +516,8 @@ button,input,select,textarea{font:inherit}
   .commons-header{min-height:72px}.commons-layout{padding-top:18px}.thread-card{padding:17px 14px}.thread-copy h2{font-size:18px}
 }
 
-.wizard-page{width:min(880px,calc(100% - 40px));margin:0 auto;padding:64px 0 100px;display:flex;flex-direction:column;align-items:center;text-align:center}
+html:has(.wizard-page),body:has(.wizard-page){min-height:100vh;background:radial-gradient(ellipse 60% 42% at 50% 24%,#fffaf0 0,rgba(255,250,240,0) 70%),linear-gradient(180deg,#fff4e2 0,#ffe6cc 55%,#ffd9bd 100%) fixed}
+.wizard-page{--navy:#1c2f52;--subject:#243d73;--blue:#243d73;--theme-rgb:36,61,115;--subject-soft:#e0f1fb;--line:#f0d9bf;width:min(880px,calc(100% - 40px));margin:0 auto;padding:64px 0 100px;display:flex;flex-direction:column;align-items:center;text-align:center}
 .mascot-wrap{animation:mascot-bob 3.2s ease-in-out infinite;margin-bottom:18px}
 .mascot{position:relative;width:190px;height:250px}
 .mascot-pose{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;user-select:none;pointer-events:none;filter:drop-shadow(0 14px 22px rgba(22,35,63,.16))}
