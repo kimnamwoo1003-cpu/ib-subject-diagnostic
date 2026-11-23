@@ -655,44 +655,33 @@ const wizardCopy: Record<WizardLang, Record<string, string>> = {
 const scienceTrackIds = ["math", "math-ai", "physics", "chemistry", "biology", "cs", "ess", "sehs", "design-technology"];
 const humanitiesTrackIds = ["economics", "business", "psychology", "history", "global-politics", "geography", "anthropology", "digital-society", "philosophy", "english-a", "english-b"];
 
-function Mascot({ mood = "happy" }: { mood?: "happy" | "excited" }) {
-  return <svg viewBox="0 0 160 168" className={`mascot mascot-${mood}`} role="img" aria-label="Curivo the dino guide">
-    <ellipse className="mascot-limb" cx="63" cy="140" rx="16" ry="14"/>
-    <ellipse className="mascot-limb" cx="97" cy="140" rx="16" ry="14"/>
-    <circle className="mascot-limb" cx="23" cy="92" r="13"/>
-    <circle className="mascot-limb" cx="137" cy="92" r="13"/>
-    <circle className="mascot-spike" cx="116" cy="40" r="9"/>
-    <circle className="mascot-spike" cx="123" cy="60" r="9.5"/>
-    <circle className="mascot-body" cx="80" cy="88" r="58"/>
-    <ellipse className="mascot-belly" cx="80" cy="112" rx="28" ry="24"/>
-    <g className="mascot-cap">
-      <path d="M80 4 130 26 80 48 30 26Z"/>
-      <rect x="75" y="26" width="10" height="14" rx="2"/>
-      <path className="mascot-tassel" d="M116 30 123 55 115 62 108 55Z"/>
-    </g>
-    <path className="mascot-brow" d="M43 62l15-5"/>
-    <path className="mascot-brow" d="M102 57l15 5"/>
-    <g className="mascot-glasses">
-      <circle cx="58" cy="80" r="19"/>
-      <circle cx="102" cy="80" r="19"/>
-      <path d="M77 80h6"/>
-    </g>
-    <g className="mascot-eyes"><circle cx="58" cy="80" r="6"/><circle cx="102" cy="80" r="6"/></g>
-    <path className="mascot-mouth" d="M68 109q12 9 24 0"/>
-  </svg>;
+function Mascot({ talking = false }: { talking?: boolean }) {
+  const [mouthOpen, setMouthOpen] = useState(false);
+  useEffect(() => {
+    if (!talking) { setMouthOpen(false); return; }
+    setMouthOpen(true);
+    const id = window.setInterval(() => setMouthOpen((open) => !open), 210);
+    return () => window.clearInterval(id);
+  }, [talking]);
+  return <div className={`mascot ${talking ? "mascot-talking" : ""}`} role="img" aria-label="Curivo the dino guide">
+    <img className={`mascot-pose ${mouthOpen ? "" : "visible"}`} src="/mascot-idle.png" alt="" draggable={false}/>
+    <img className={`mascot-pose ${mouthOpen ? "visible" : ""}`} src="/mascot-talk.png" alt="" draggable={false}/>
+  </div>;
 }
 
-function SpeechBubble({ text }: { text: string }) {
+function SpeechBubble({ text, onTalking }: { text: string; onTalking?: (talking: boolean) => void }) {
   const [shown, setShown] = useState("");
   useEffect(() => {
     setShown("");
+    onTalking?.(true);
     let index = 0;
     const id = window.setInterval(() => {
       index += 1;
       setShown(text.slice(0, index));
-      if (index >= text.length) window.clearInterval(id);
-    }, 16);
-    return () => window.clearInterval(id);
+      if (index >= text.length) { window.clearInterval(id); onTalking?.(false); }
+    }, 28);
+    return () => { window.clearInterval(id); onTalking?.(false); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text]);
   return <div className="speech-bubble"><p>{shown}</p></div>;
 }
@@ -718,6 +707,7 @@ function OnboardingWizard({ name, onSaved }: { name: string; onSaved: () => Prom
   const [quizQuestions, setQuizQuestions] = useState<Array<{ subjectId: string; question: Question | null }>>([]);
   const [quizAnswers, setQuizAnswers] = useState<Record<string, string>>({});
   const [savingGrade, setSavingGrade] = useState(false);
+  const [talking, setTalking] = useState(false);
   const t = wizardCopy[lang];
 
   const chooseGrade = async (value: "10" | "11" | "12") => {
@@ -752,22 +742,22 @@ function OnboardingWizard({ name, onSaved }: { name: string; onSaved: () => Prom
   const currentQuiz = quizQuestions[quizIndex];
   const candidateList = track === "science" ? scienceTrackIds : humanitiesTrackIds;
 
-  return <main className="wizard-page"><div className="mascot-wrap"><Mascot mood={step === "recommend" ? "excited" : "happy"}/></div>
+  return <main className="wizard-page"><div className="mascot-wrap"><Mascot talking={talking}/></div>
     {step === "welcome" && <>
-      <SpeechBubble text={t.welcome}/>
+      <SpeechBubble text={t.welcome} onTalking={setTalking}/>
       <div className="wizard-choices">{wizardLanguages.map((option) => <button type="button" key={option.code} className={lang === option.code ? "selected" : ""} onClick={() => setLang(option.code)}>{option.label}</button>)}</div>
       <button type="button" className="primary-button wizard-continue" onClick={() => setStep("grade")}>{t.confirmLanguage} <span>→</span></button>
     </>}
-    {step === "grade" && <><SpeechBubble text={t.askGrade}/><div className="wizard-choices">{(["10", "11", "12"] as const).map((value) => <button type="button" key={value} disabled={savingGrade} onClick={() => void chooseGrade(value)}>Grade {value}</button>)}</div></>}
-    {step === "track" && <><SpeechBubble text={t.askTrack}/><div className="wizard-choices"><button type="button" onClick={() => { setTrack("science"); setStep("candidates"); }}>Sciences</button><button type="button" onClick={() => { setTrack("humanities"); setStep("candidates"); }}>Humanities</button></div></>}
+    {step === "grade" && <><SpeechBubble text={t.askGrade} onTalking={setTalking}/><div className="wizard-choices">{(["10", "11", "12"] as const).map((value) => <button type="button" key={value} disabled={savingGrade} onClick={() => void chooseGrade(value)}>Grade {value}</button>)}</div></>}
+    {step === "track" && <><SpeechBubble text={t.askTrack} onTalking={setTalking}/><div className="wizard-choices"><button type="button" onClick={() => { setTrack("science"); setStep("candidates"); }}>Sciences</button><button type="button" onClick={() => { setTrack("humanities"); setStep("candidates"); }}>Humanities</button></div></>}
     {step === "candidates" && <>
-      <SpeechBubble text={t.askCandidates}/>
+      <SpeechBubble text={t.askCandidates} onTalking={setTalking}/>
       <div className="wizard-candidate-grid">{candidateList.map((id) => { const subject = subjectCatalog.find((item) => item.id === id); if (!subject) return null; return <button type="button" key={id} className={candidates.includes(id) ? "selected" : ""} onClick={() => toggleCandidate(id)}>{subject.name}</button>; })}</div>
       <button type="button" className="primary-button wizard-continue" disabled={!candidates.length} onClick={startQuiz}>{t.quizIntro} <span>→</span></button>
     </>}
     {step === "quiz" && (currentQuiz ? <QuizStep question={currentQuiz.question} subjectId={currentQuiz.subjectId} index={quizIndex} total={quizQuestions.length} onAnswer={answerQuiz}/> : <p>Loading…</p>)}
     {step === "recommend" && <>
-      <SpeechBubble text={t.quizDone}/>
+      <SpeechBubble text={t.quizDone} onTalking={setTalking}/>
       <ul className="wizard-recommend-list">{(recommended.length ? recommended : candidates).map((id) => <li key={id}>{subjectCatalog.find((item) => item.id === id)?.name ?? id}</li>)}</ul>
       <button type="button" className="primary-button wizard-continue" onClick={() => setStep("picker")}>{t.goToPicker} <span>→</span></button>
     </>}
